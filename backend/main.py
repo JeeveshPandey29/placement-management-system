@@ -19,7 +19,7 @@ def startup():
 
 @app.get("/", tags=["Root"])
 def read_root():
-    return {"message": "Welcome to PMS Backend"}
+    return {"message": "Welcome to PMS Backend v2"}
 
 app.include_router(auth.router, tags=["Authentication"])
 app.include_router(colleges.router, prefix="/colleges", tags=["Colleges"])
