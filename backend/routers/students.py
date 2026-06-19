@@ -37,7 +37,7 @@ def update_student_profile(payload: StudentProfileUpdate, current_user: dict = D
             cur.execute("""
                 SELECT sp.user_id, u.email, sp.roll_number, sp.college_id, c.name, sp.branch, sp.gpa, sp.resume_url, sp.skills, sp.status
                 FROM student_profiles sp
-                JOIN users u ON sp.user_id = u.id
+                JOIN pms_users u ON sp.user_id = u.id
                 LEFT JOIN colleges c ON sp.college_id = c.id
                 WHERE sp.user_id = %s
             """, (user_id,))
@@ -71,7 +71,7 @@ def get_own_student_profile(current_user: dict = Depends(require_student)):
             cur.execute("""
                 SELECT sp.user_id, u.email, sp.roll_number, sp.college_id, c.name, sp.branch, sp.gpa, sp.resume_url, sp.skills, sp.status
                 FROM student_profiles sp
-                JOIN users u ON sp.user_id = u.id
+                JOIN pms_users u ON sp.user_id = u.id
                 LEFT JOIN colleges c ON sp.college_id = c.id
                 WHERE sp.user_id = %s
             """, (user_id,))
@@ -103,7 +103,7 @@ def list_students(college_id: Optional[int] = None, status: Optional[str] = None
             query = """
                 SELECT sp.user_id, u.email, sp.roll_number, sp.college_id, c.name, sp.branch, sp.gpa, sp.resume_url, sp.skills, sp.status
                 FROM student_profiles sp
-                JOIN users u ON sp.user_id = u.id
+                JOIN pms_users u ON sp.user_id = u.id
                 LEFT JOIN colleges c ON sp.college_id = c.id
             """
             conditions = []

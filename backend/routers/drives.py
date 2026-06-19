@@ -124,7 +124,7 @@ def get_my_applications(current_user: dict = Depends(require_student)):
                 """SELECT da.id, da.drive_id, pd.company_name, pd.job_role, da.student_id, u.email, da.status
                    FROM drive_applications da
                    JOIN placement_drives pd ON da.drive_id = pd.id
-                   JOIN users u ON da.student_id = u.id
+                   JOIN pms_users u ON da.student_id = u.id
                    WHERE da.student_id = %s
                    ORDER BY da.id DESC""",
                 (student_id,)
@@ -155,7 +155,7 @@ def get_drive_applications(drive_id: int, current_user: dict = Depends(get_curre
                     """SELECT da.id, da.drive_id, pd.company_name, pd.job_role, da.student_id, u.email, da.status
                        FROM drive_applications da
                        JOIN placement_drives pd ON da.drive_id = pd.id
-                       JOIN users u ON da.student_id = u.id
+                       JOIN pms_users u ON da.student_id = u.id
                        WHERE da.drive_id = %s AND da.student_id = %s""",
                     (drive_id, current_user["id"])
                 )
@@ -164,7 +164,7 @@ def get_drive_applications(drive_id: int, current_user: dict = Depends(get_curre
                     """SELECT da.id, da.drive_id, pd.company_name, pd.job_role, da.student_id, u.email, da.status
                        FROM drive_applications da
                        JOIN placement_drives pd ON da.drive_id = pd.id
-                       JOIN users u ON da.student_id = u.id
+                       JOIN pms_users u ON da.student_id = u.id
                        WHERE da.drive_id = %s""",
                     (drive_id,)
                 )
@@ -231,7 +231,7 @@ def leave_interview_feedback(application_id: int, payload: FeedbackCreate, train
             cur.execute(
                 """SELECT da.student_id, u.email, pd.company_name
                    FROM drive_applications da
-                   JOIN users u ON da.student_id = u.id
+                   JOIN pms_users u ON da.student_id = u.id
                    JOIN placement_drives pd ON da.drive_id = pd.id
                    WHERE da.id = %s""",
                 (application_id,)
@@ -283,7 +283,7 @@ def view_interview_feedback(application_id: int, current_user: dict = Depends(ge
                 """SELECT f.id, f.application_id, pd.company_name, da.student_id, u.email, f.round_name, f.interviewer_name, f.rating, f.comments
                    FROM interview_feedback f
                    JOIN drive_applications da ON f.application_id = da.id
-                   JOIN users u ON da.student_id = u.id
+                   JOIN pms_users u ON da.student_id = u.id
                    JOIN placement_drives pd ON da.drive_id = pd.id
                    WHERE f.application_id = %s
                    ORDER BY f.id ASC""",

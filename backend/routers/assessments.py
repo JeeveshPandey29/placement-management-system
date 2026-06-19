@@ -47,7 +47,7 @@ def get_my_assessment_scores(current_user: dict = Depends(require_student)):
             cur.execute(
                 """SELECT s.id, s.assessment_id, s.student_id, u.email, s.score, s.feedback
                    FROM assessment_scores s
-                   JOIN users u ON s.student_id = u.id
+                   JOIN pms_users u ON s.student_id = u.id
                    WHERE s.student_id = %s
                    ORDER BY s.id DESC""",
                 (student_id,)
@@ -72,7 +72,7 @@ def enter_assessment_score(assessment_id: int, payload: ScoreCreate, trainer_use
     try:
         with get_db() as cur:
             # Verify student exists
-            cur.execute("SELECT role FROM users WHERE id = %s", (payload.student_id,))
+            cur.execute("SELECT role FROM pms_users WHERE id = %s", (payload.student_id,))
             row = cur.fetchone()
             if not row or row[0] != "student":
                 raise HTTPException(status_code=400, detail="Invalid student ID")
@@ -97,7 +97,7 @@ def enter_assessment_score(assessment_id: int, payload: ScoreCreate, trainer_use
             )
             score_id = cur.fetchone()[0]
             
-            cur.execute("SELECT email FROM users WHERE id = %s", (payload.student_id,))
+            cur.execute("SELECT email FROM pms_users WHERE id = %s", (payload.student_id,))
             student_email = cur.fetchone()[0]
             
         return {
@@ -122,7 +122,7 @@ def get_assessment_scores(assessment_id: int, current_user: dict = Depends(get_c
                 cur.execute(
                     """SELECT s.id, s.assessment_id, s.student_id, u.email, s.score, s.feedback
                        FROM assessment_scores s
-                       JOIN users u ON s.student_id = u.id
+                       JOIN pms_users u ON s.student_id = u.id
                        WHERE s.assessment_id = %s AND s.student_id = %s""",
                     (assessment_id, current_user["id"])
                 )
@@ -130,7 +130,7 @@ def get_assessment_scores(assessment_id: int, current_user: dict = Depends(get_c
                 cur.execute(
                     """SELECT s.id, s.assessment_id, s.student_id, u.email, s.score, s.feedback
                        FROM assessment_scores s
-                       JOIN users u ON s.student_id = u.id
+                       JOIN pms_users u ON s.student_id = u.id
                        WHERE s.assessment_id = %s
                        ORDER BY s.score DESC""",
                     (assessment_id,)

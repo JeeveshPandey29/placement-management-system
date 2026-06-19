@@ -47,7 +47,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
     user_id = int(payload.get("user_id"))
     
     with get_db() as cur:
-        cur.execute("SELECT id, email, role FROM users WHERE id = %s", (user_id,))
+        cur.execute("SELECT id, email, role FROM pms_users WHERE id = %s", (user_id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=401, detail="User not found")

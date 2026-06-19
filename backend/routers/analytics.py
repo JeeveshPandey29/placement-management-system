@@ -10,7 +10,7 @@ def get_placement_analytics(current_user: dict = Depends(require_trainer)):
     try:
         with get_db() as cur:
             # Total Students
-            cur.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")
+            cur.execute("SELECT COUNT(*) FROM pms_users WHERE role = 'student'")
             total_students = cur.fetchone()[0]
 
             # Placed Students

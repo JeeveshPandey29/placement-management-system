@@ -9,13 +9,13 @@ router = APIRouter()
 def register(payload: UserRegister):
     try:
         with get_db() as cur:
-            cur.execute("SELECT id FROM users WHERE email = %s", (payload.email,))
+            cur.execute("SELECT id FROM pms_users WHERE email = %s", (payload.email,))
             if cur.fetchone():
                 raise HTTPException(status_code=400, detail="Email already registered")
             
             hashed = hash_password(payload.password)
             cur.execute(
-                "INSERT INTO users (email, password, role) VALUES (%s, %s, %s) RETURNING id",
+                "INSERT INTO pms_users (email, password, role) VALUES (%s, %s, %s) RETURNING id",
                 (payload.email, hashed, payload.role),
             )
             user_id = cur.fetchone()[0]
@@ -36,7 +36,7 @@ def register(payload: UserRegister):
 def login(payload: UserLogin):
     try:
         with get_db() as cur:
-            cur.execute("SELECT id, password, role FROM users WHERE email = %s", (payload.email,))
+            cur.execute("SELECT id, password, role FROM pms_users WHERE email = %s", (payload.email,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=401, detail="Invalid credentials")

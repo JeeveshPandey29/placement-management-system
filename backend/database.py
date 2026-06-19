@@ -41,42 +41,21 @@ def init_db():
                 location VARCHAR(255) NOT NULL
             );
         ''')
-        
-        # 2. Users (Auth credentials + Role)
+
+        # 2. PMS Users (Auth credentials + Role) — named pms_users to avoid clash with Supabase auth.users
         cur.execute('''
-            CREATE TABLE IF NOT EXISTS users (
+            CREATE TABLE IF NOT EXISTS pms_users (
                 id SERIAL PRIMARY KEY,
                 email VARCHAR(255) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL,
-                role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'trainer', 'student'))
+                role VARCHAR(50) NOT NULL DEFAULT 'student' CHECK (role IN ('admin', 'trainer', 'student'))
             );
         ''')
-        cur.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50);')
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255);")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password VARCHAR(255);")
-        cur.execute("ALTER TABLE users ALTER COLUMN email SET NOT NULL;")
-        cur.execute("ALTER TABLE users ALTER COLUMN password SET NOT NULL;")
-        cur.execute("UPDATE users SET role = 'student' WHERE role IS NULL;")
-        cur.execute("ALTER TABLE users ALTER COLUMN role SET NOT NULL;")
-        cur.execute("ALTER TABLE users ALTER COLUMN role SET DEFAULT 'student';")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email);")
-        cur.execute("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_constraint c
-                    JOIN pg_class t ON t.oid = c.conrelid
-                    WHERE c.conname = 'users_role_check' AND t.relname = 'users'
-                ) THEN
-                    ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'trainer', 'student'));
-                END IF;
-            END$$;
-        """)
-        
-        # 3. Student Profiles (Linked to User & College)
+
+        # 3. Student Profiles (Linked to pms_users & College)
         cur.execute('''
             CREATE TABLE IF NOT EXISTS student_profiles (
-                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER PRIMARY KEY REFERENCES pms_users(id) ON DELETE CASCADE,
                 roll_number VARCHAR(100),
                 college_id INTEGER REFERENCES colleges(id) ON DELETE SET NULL,
                 branch VARCHAR(100),
@@ -86,42 +65,18 @@ def init_db():
                 status VARCHAR(50) DEFAULT 'unplaced' CHECK (status IN ('unplaced', 'placed'))
             );
         ''')
-        cur.execute("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_constraint c
-                    JOIN pg_class t ON t.oid = c.conrelid
-                    WHERE c.conname = 'student_profiles_pkey' AND t.relname = 'student_profiles'
-                ) THEN
-                    ALTER TABLE student_profiles ADD CONSTRAINT student_profiles_pkey PRIMARY KEY (user_id);
-                END IF;
-            END$$;
-        """)
-        cur.execute("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_constraint c
-                    JOIN pg_class t ON t.oid = c.conrelid
-                    WHERE c.conname = 'student_profiles_status_check' AND t.relname = 'student_profiles'
-                ) THEN
-                    ALTER TABLE student_profiles ADD CONSTRAINT student_profiles_status_check CHECK (status IN ('unplaced', 'placed'));
-                END IF;
-            END$$;
-        """)
-        
+
         # 4. Attendance
         cur.execute('''
             CREATE TABLE IF NOT EXISTS attendance (
                 id SERIAL PRIMARY KEY,
-                student_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                student_id INTEGER REFERENCES pms_users(id) ON DELETE CASCADE,
                 date DATE NOT NULL,
                 status VARCHAR(50) NOT NULL CHECK (status IN ('present', 'absent', 'late')),
                 session_name VARCHAR(255) NOT NULL
             );
         ''')
-        
+
         # 5. Assessments
         cur.execute('''
             CREATE TABLE IF NOT EXISTS assessments (
@@ -132,19 +87,19 @@ def init_db():
                 date DATE NOT NULL
             );
         ''')
-        
+
         # 6. Assessment Scores
         cur.execute('''
             CREATE TABLE IF NOT EXISTS assessment_scores (
                 id SERIAL PRIMARY KEY,
                 assessment_id INTEGER REFERENCES assessments(id) ON DELETE CASCADE,
-                student_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                student_id INTEGER REFERENCES pms_users(id) ON DELETE CASCADE,
                 score NUMERIC(5,2) NOT NULL,
                 feedback TEXT,
                 UNIQUE(assessment_id, student_id)
             );
         ''')
-        
+
         # 7. Placement Drives
         cur.execute('''
             CREATE TABLE IF NOT EXISTS placement_drives (
@@ -157,18 +112,18 @@ def init_db():
                 status VARCHAR(50) DEFAULT 'upcoming' CHECK (status IN ('upcoming', 'active', 'completed'))
             );
         ''')
-        
+
         # 8. Drive Applications
         cur.execute('''
             CREATE TABLE IF NOT EXISTS drive_applications (
                 id SERIAL PRIMARY KEY,
                 drive_id INTEGER REFERENCES placement_drives(id) ON DELETE CASCADE,
-                student_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                student_id INTEGER REFERENCES pms_users(id) ON DELETE CASCADE,
                 status VARCHAR(50) DEFAULT 'applied' CHECK (status IN ('applied', 'shortlisted', 'selected', 'rejected')),
                 UNIQUE(drive_id, student_id)
             );
         ''')
-        
+
         # 9. Interview Feedback
         cur.execute('''
             CREATE TABLE IF NOT EXISTS interview_feedback (
@@ -180,7 +135,7 @@ def init_db():
                 comments TEXT
             );
         ''')
-        
+
         # 10. Seed MITADT UNIVERSITY
         cur.execute('''
             INSERT INTO colleges (id, name, location)
@@ -188,4 +143,3 @@ def init_db():
             ON CONFLICT (id) DO NOTHING;
         ''')
         print("Database schema successfully checked / initialized.")
-
