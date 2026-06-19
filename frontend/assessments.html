@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assessments — PMS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="toast-container" id="toast-container"></div>
+  <div class="modal-overlay" id="modal-overlay"><div class="modal" id="modal-content"></div></div>
+  <div id="app"></div>
+  <script src="common.js"></script>
+  <script>
+    (async () => {
+      if (!initPage('assessments', 'Assessments', 'Manage assessments and student scores')) return;
+      const role = auth.getUser().role;
+      try {
+        const assessments = await api('/assessments');
+        if (role === 'student') {
+          // Student: view assessments + own scores
+          const scores = await api('/assessments/my/scores').catch(() => []);
+          const scoreMap = {};
+          scores.forEach(s => { scoreMap[s.assessment_id] = s; });
+          pb().innerHTML = `
+            <div class="stats-grid">
+              <div class="stat-card"><div class="stat-icon" style="background:rgba(124,58,237,0.15);color:var(--accent-purple)">📝</div><div class="stat-value">${assessments.length}</div><div class="stat-label">Total Assessments</div></div>
+              <div class="stat-card"><div class="stat-icon" style="background:rgba(16,185,129,0.15);color:var(--accent-green)">✅</div><div class="stat-value">${scores.length}</div><div class="stat-label">Scores Received</div></div>
+              <div class="stat-card"><div class="stat-icon" style="background:rgba(59,130,246,0.15);color:var(--accent-blue)">📊</div><div class="stat-value">${scores.length > 0 ? (scores.reduce((a,s)=>a+parseFloat(s.score),0)/scores.length).toFixed(1) : '—'}</div><div class="stat-label">Average Score</div></div>
+            </div>
+            <div class="table-wrapper"><table><thead><tr><th>Assessment</th><th>Date</th><th>Max Score</th><th>Your Score</th><th>Feedback</th></tr></thead><tbody>
+            ${assessments.length === 0 ? '<tr><td colspan="5" class="text-center text-muted" style="padding:30px">No assessments yet</td></tr>' :
+            assessments.map(a => {
+              const sc = scoreMap[a.id];
+              return `<tr><td><strong>${a.title}</strong>${a.description ? '<br><span class="text-muted text-sm">'+a.description+'</span>' : ''}</td><td>${a.date}</td><td>${a.max_score}</td><td>${sc ? '<strong>'+sc.score+'</strong>' : '<span class="text-muted">—</span>'}</td><td>${sc && sc.feedback ? sc.feedback : '<span class="text-muted">—</span>'}</td></tr>`;
+            }).join('')}
+            </tbody></table></div>`;
+        } else {
+          // Trainer/Admin: create assessments + enter scores
+          const students = await api('/students').catch(() => []);
+          const createBtn = (role === 'trainer' || role === 'admin')
+            ? '<button class="btn btn-primary btn-sm" id="create-assess-btn">+ Create Assessment</button>' : '';
+          pb().innerHTML = `
+            <div class="toolbar"><div class="toolbar-spacer"></div><span class="text-muted text-sm">${assessments.length} assessment(s)</span>${createBtn}</div>
+            <div class="table-wrapper"><table><thead><tr><th>Title</th><th>Description</th><th>Max Score</th><th>Date</th><th>Actions</th></tr></thead><tbody>
+            ${assessments.length === 0 ? '<tr><td colspan="5" class="text-center text-muted" style="padding:30px">No assessments yet</td></tr>' :
+            assessments.map(a => `<tr>
+              <td><strong>${a.title}</strong></td><td>${a.description||'—'}</td><td>${a.max_score}</td><td>${a.date}</td>
+              <td><div class="btn-group"><button class="btn btn-sm btn-secondary score-btn" data-id="${a.id}" data-title="${a.title}" data-max="${a.max_score}">Enter Score</button><button class="btn btn-sm btn-secondary view-scores-btn" data-id="${a.id}" data-title="${a.title}">View Scores</button></div></td>
+            </tr>`).join('')}
+            </tbody></table></div>`;
+
+          // Create assessment
+          document.getElementById('create-assess-btn')?.addEventListener('click', () => {
+            openModal(`<h2>Create Assessment</h2>
+              <div class="form-group"><label>Title</label><input class="form-control" id="ca-title" placeholder="e.g. Python Quiz 1"></div>
+              <div class="form-group"><label>Description</label><input class="form-control" id="ca-desc" placeholder="Optional description"></div>
+              <div class="form-row">
+                <div class="form-group"><label>Max Score</label><input type="number" class="form-control" id="ca-max" placeholder="100"></div>
+                <div class="form-group"><label>Date</label><input type="date" class="form-control" id="ca-date" value="${new Date().toISOString().split('T')[0]}"></div>
+              </div>
+              <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ca-save">Create</button></div>`);
+            document.getElementById('ca-save').onclick = async () => {
+              const title = document.getElementById('ca-title').value.trim();
+              const max_score = parseInt(document.getElementById('ca-max').value);
+              const date = document.getElementById('ca-date').value;
+              const description = document.getElementById('ca-desc').value.trim() || null;
+              if (!title || !max_score || !date) return toast('Fill required fields', 'error');
+              try {
+                await api('/assessments', { method: 'POST', body: JSON.stringify({ title, description, max_score, date }) });
+                toast('Assessment created!', 'success'); closeModal(); location.reload();
+              } catch(e) { toast(e.message, 'error'); }
+            };
+          });
+
+          // Enter score
+          document.querySelectorAll('.score-btn').forEach(btn => {
+            btn.onclick = () => {
+              const aid = btn.dataset.id, title = btn.dataset.title, max = btn.dataset.max;
+              openModal(`<h2>Enter Score — ${title}</h2>
+                <div class="form-group"><label>Student</label><select class="form-control" id="sc-student">${students.map(s=>`<option value="${s.user_id}">${s.email}</option>`).join('')}</select></div>
+                <div class="form-row">
+                  <div class="form-group"><label>Score (max ${max})</label><input type="number" class="form-control" id="sc-score" min="0" max="${max}"></div>
+                  <div class="form-group"><label>Feedback</label><input class="form-control" id="sc-fb" placeholder="Optional"></div>
+                </div>
+                <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="sc-save">Save Score</button></div>`);
+              document.getElementById('sc-save').onclick = async () => {
+                const student_id = parseInt(document.getElementById('sc-student').value);
+                const score = parseFloat(document.getElementById('sc-score').value);
+                const feedback = document.getElementById('sc-fb').value.trim() || null;
+                if (isNaN(score)) return toast('Enter a valid score', 'error');
+                try {
+                  await api(`/assessments/${aid}/scores`, { method: 'POST', body: JSON.stringify({ student_id, score, feedback }) });
+                  toast('Score recorded!', 'success'); closeModal();
+                } catch(e) { toast(e.message, 'error'); }
+              };
+            };
+          });
+
+          // View scores
+          document.querySelectorAll('.view-scores-btn').forEach(btn => {
+            btn.onclick = async () => {
+              const aid = btn.dataset.id, title = btn.dataset.title;
+              try {
+                const scores = await api(`/assessments/${aid}/scores`);
+                openModal(`<h2>Scores — ${title}</h2>
+                  <div class="table-wrapper"><table><thead><tr><th>Student</th><th>Score</th><th>Feedback</th></tr></thead><tbody>
+                  ${scores.length === 0 ? '<tr><td colspan="3" class="text-center text-muted" style="padding:20px">No scores yet</td></tr>' :
+                  scores.map(s => `<tr><td>${s.student_email}</td><td><strong>${s.score}</strong></td><td>${s.feedback||'—'}</td></tr>`).join('')}
+                  </tbody></table></div>
+                  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`);
+              } catch(e) { toast(e.message, 'error'); }
+            };
+          });
+        }
+      } catch(e) { pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`; }
+    })();
+  </script>
+</body>
+</html>

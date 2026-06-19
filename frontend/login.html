@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — PMS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="toast-container" id="toast-container"></div>
+  <div id="app">
+    <div class="auth-wrapper">
+      <div class="auth-card">
+        <div id="login-form">
+          <h1>Welcome Back</h1>
+          <p class="subtitle">Sign in to your placement portal</p>
+          <div class="form-group">
+            <label for="l-email">Email Address</label>
+            <input type="email" id="l-email" class="form-control" placeholder="you@example.com">
+          </div>
+          <div class="form-group">
+            <label for="l-pass">Password</label>
+            <input type="password" id="l-pass" class="form-control" placeholder="••••••••">
+          </div>
+          <button class="btn btn-primary btn-block" id="login-btn" style="margin-top:8px">Sign In</button>
+          <div class="auth-toggle">Don't have an account? <a id="show-register">Register</a></div>
+        </div>
+        <div id="register-form" class="hidden">
+          <h1>Create Account</h1>
+          <p class="subtitle">Join the placement management portal</p>
+          <div class="form-group">
+            <label for="r-email">Email Address</label>
+            <input type="email" id="r-email" class="form-control" placeholder="you@example.com">
+          </div>
+          <div class="form-group">
+            <label for="r-pass">Password</label>
+            <input type="password" id="r-pass" class="form-control" placeholder="Min 6 characters">
+          </div>
+          <div class="form-group">
+            <label for="r-role">Role</label>
+            <select id="r-role" class="form-control">
+              <option value="student">Student</option>
+              <option value="trainer">Trainer</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-block" id="register-btn" style="margin-top:8px">Create Account</button>
+          <div class="auth-toggle">Already have an account? <a id="show-login">Sign In</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="common.js"></script>
+  <script>
+    // If already logged in, go to dashboard
+    if (auth.getToken()) location.href = 'dashboard.html';
+
+    const $id = id => document.getElementById(id);
+    $id('show-register').onclick = () => { $id('login-form').classList.add('hidden'); $id('register-form').classList.remove('hidden'); };
+    $id('show-login').onclick = () => { $id('register-form').classList.add('hidden'); $id('login-form').classList.remove('hidden'); };
+
+    $id('login-btn').onclick = async () => {
+      const email = $id('l-email').value.trim(), password = $id('l-pass').value;
+      if (!email || !password) return toast('Fill in all fields', 'error');
+      const btn = $id('login-btn'); btn.disabled = true; btn.textContent = 'Signing in...';
+      try {
+        const data = await api('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+        // Save token first so /me call is authenticated
+        const tkn = data.token || data.access_token;
+        localStorage.setItem('pms_token', tkn);
+        const user = await api('/me');
+        auth.save(tkn, { id: user.id, email: user.email, role: user.role });
+        toast('Welcome back!', 'success');
+        setTimeout(() => location.href = 'dashboard.html', 500);
+      } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Sign In'; }
+    };
+
+    $id('register-btn').onclick = async () => {
+      const email = $id('r-email').value.trim(), password = $id('r-pass').value, role = $id('r-role').value;
+      if (!email || !password) return toast('Fill in all fields', 'error');
+      const btn = $id('register-btn'); btn.disabled = true; btn.textContent = 'Creating...';
+      try {
+        await api('/register', { method: 'POST', body: JSON.stringify({ email, password, role }) });
+        toast('Account created! Please sign in.', 'success');
+        $id('show-login').click();
+      } catch (e) { toast(e.message, 'error'); }
+      btn.disabled = false; btn.textContent = 'Create Account';
+    };
+
+    // Enter key support
+    $id('l-pass').onkeydown = e => { if (e.key === 'Enter') $id('login-btn').click(); };
+    $id('r-pass').onkeydown = e => { if (e.key === 'Enter') $id('register-btn').click(); };
+  </script>
+</body>
+</html>

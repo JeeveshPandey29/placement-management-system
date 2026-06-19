@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — PMS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="toast-container" id="toast-container"></div>
+  <div class="modal-overlay" id="modal-overlay"><div class="modal" id="modal-content"></div></div>
+  <div id="app"></div>
+  <script src="common.js"></script>
+  <script>
+    (async () => {
+      if (!initPage('dashboard', 'Dashboard', 'Overview of placement activities')) return;
+      const user = auth.getUser();
+      const role = user.role;
+      try {
+        // Fetch data based on role
+        let statsHTML = '';
+        if (role === 'admin' || role === 'trainer') {
+          const a = await api('/analytics');
+          statsHTML = `
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon" style="background:rgba(124,58,237,0.15);color:var(--accent-purple)">👥</div>
+              <div class="stat-value">${a.total_students}</div>
+              <div class="stat-label">Total Students</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon" style="background:rgba(16,185,129,0.15);color:var(--accent-green)">✅</div>
+              <div class="stat-value">${a.placed_students}</div>
+              <div class="stat-label">Placed Students</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon" style="background:rgba(6,182,212,0.15);color:var(--accent-cyan)">📊</div>
+              <div class="stat-value">${a.placement_percentage.toFixed(1)}%</div>
+              <div class="stat-label">Placement Rate</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon" style="background:rgba(59,130,246,0.15);color:var(--accent-blue)">📚</div>
+              <div class="stat-value">${a.average_gpa.toFixed(2)}</div>
+              <div class="stat-label">Average GPA</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon" style="background:rgba(236,72,153,0.15);color:var(--accent-pink)">🏢</div>
+              <div class="stat-value">${a.total_drives}</div>
+              <div class="stat-label">Placement Drives</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon" style="background:rgba(245,158,11,0.15);color:var(--accent-orange)">🎓</div>
+              <div class="stat-value">${a.total_colleges}</div>
+              <div class="stat-label">Colleges</div>
+            </div>
+          </div>`;
+        }
+
+        // Quick actions based on role
+        let actions = '<div class="card mt-2"><div class="card-header"><h3>Quick Actions</h3></div><div class="btn-group" style="flex-wrap:wrap">';
+        if (role === 'student') {
+          actions += `<a href="profile.html" class="btn btn-secondary">👤 My Profile</a>
+            <a href="drives.html" class="btn btn-secondary">🏢 Browse Drives</a>
+            <a href="attendance.html" class="btn btn-secondary">📅 My Attendance</a>
+            <a href="assessments.html" class="btn btn-secondary">📝 My Scores</a>`;
+        } else if (role === 'trainer') {
+          actions += `<a href="attendance.html" class="btn btn-secondary">📅 Record Attendance</a>
+            <a href="assessments.html" class="btn btn-secondary">📝 Manage Assessments</a>
+            <a href="students.html" class="btn btn-secondary">👥 View Students</a>
+            <a href="analytics.html" class="btn btn-secondary">📊 Analytics</a>`;
+        } else {
+          actions += `<a href="drives.html" class="btn btn-secondary">🏢 Manage Drives</a>
+            <a href="colleges.html" class="btn btn-secondary">🎓 Manage Colleges</a>
+            <a href="students.html" class="btn btn-secondary">👥 View Students</a>
+            <a href="analytics.html" class="btn btn-secondary">📊 Analytics</a>`;
+        }
+        actions += '</div></div>';
+
+        // Student-specific: show own profile summary
+        let profileCard = '';
+        if (role === 'student') {
+          try {
+            const p = await api('/students/profile');
+            statsHTML = `<div class="stats-grid">
+              <div class="stat-card"><div class="stat-icon" style="background:rgba(124,58,237,0.15);color:var(--accent-purple)">📧</div><div class="stat-value text-sm">${p.email}</div><div class="stat-label">Email</div></div>
+              <div class="stat-card"><div class="stat-icon" style="background:rgba(16,185,129,0.15);color:var(--accent-green)">📊</div><div class="stat-value">${p.gpa || 'N/A'}</div><div class="stat-label">GPA</div></div>
+              <div class="stat-card"><div class="stat-icon" style="background:rgba(6,182,212,0.15);color:var(--accent-cyan)">🏫</div><div class="stat-value text-sm">${p.college_name || 'Not set'}</div><div class="stat-label">College</div></div>
+              <div class="stat-card"><div class="stat-icon" style="background:rgba(245,158,11,0.15);color:var(--accent-orange)">📋</div><div class="stat-value">${statusBadge(p.status)}</div><div class="stat-label">Status</div></div>
+            </div>`;
+          } catch(e) {
+            statsHTML = '<div class="card mb-3" style="border-color:rgba(245,158,11,0.3)"><p style="color:var(--accent-orange)">⚠️ Complete your profile to get started. <a href="profile.html" style="color:var(--accent-purple)">Go to Profile →</a></p></div>';
+          }
+        }
+
+        // Recent drives for everyone
+        let drivesCard = '';
+        try {
+          const drives = await api('/drives');
+          if (drives.length > 0) {
+            const recent = drives.slice(0, 3);
+            drivesCard = `<div class="card mt-2"><div class="card-header"><h3>Recent Placement Drives</h3><a href="drives.html" class="btn btn-sm btn-secondary">View All</a></div>
+            <div class="table-wrapper"><table><thead><tr><th>Company</th><th>Role</th><th>Package</th><th>Status</th><th>Date</th></tr></thead><tbody>
+            ${recent.map(d => `<tr><td><strong>${d.company_name}</strong></td><td>${d.job_role}</td><td>₹${d.package_lpa} LPA</td><td>${statusBadge(d.status)}</td><td>${d.date}</td></tr>`).join('')}
+            </tbody></table></div></div>`;
+          }
+        } catch(e) {}
+
+        pb().innerHTML = statsHTML + actions + drivesCard;
+      } catch (e) {
+        pb().innerHTML = `<div class="empty-state"><h3>Error loading dashboard</h3><p>${e.message}</p></div>`;
+      }
+    })();
+  </script>
+</body>
+</html>

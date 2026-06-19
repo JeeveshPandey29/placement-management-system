@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics — PMS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="toast-container" id="toast-container"></div>
+  <div class="modal-overlay" id="modal-overlay"><div class="modal" id="modal-content"></div></div>
+  <div id="app"></div>
+  <script src="common.js"></script>
+  <script>
+    (async () => {
+      if (!initPage('analytics', 'Analytics', 'Placement statistics and insights')) return;
+      try {
+        const a = await api('/analytics');
+        const unplaced = a.total_students - a.placed_students;
+        pb().innerHTML = `
+          <div class="stats-grid">
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(124,58,237,0.15);color:var(--accent-purple)">👥</div><div class="stat-value">${a.total_students}</div><div class="stat-label">Total Students</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(16,185,129,0.15);color:var(--accent-green)">✅</div><div class="stat-value">${a.placed_students}</div><div class="stat-label">Placed</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(239,68,68,0.15);color:var(--accent-red)">⏳</div><div class="stat-value">${unplaced}</div><div class="stat-label">Unplaced</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(6,182,212,0.15);color:var(--accent-cyan)">📊</div><div class="stat-value">${a.placement_percentage.toFixed(1)}%</div><div class="stat-label">Placement Rate</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(59,130,246,0.15);color:var(--accent-blue)">📚</div><div class="stat-value">${a.average_gpa.toFixed(2)}</div><div class="stat-label">Average GPA</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(236,72,153,0.15);color:var(--accent-pink)">🏢</div><div class="stat-value">${a.total_drives}</div><div class="stat-label">Total Drives</div></div>
+          </div>
+          <div class="charts-grid">
+            <div class="chart-container"><h3 style="margin-bottom:16px">Placement Status</h3><canvas id="chart-placement"></canvas></div>
+            <div class="chart-container"><h3 style="margin-bottom:16px">Overview</h3><canvas id="chart-overview"></canvas></div>
+          </div>`;
+
+        // Draw placement donut chart
+        const c1 = document.getElementById('chart-placement');
+        const ctx1 = c1.getContext('2d');
+        c1.width = c1.parentElement.clientWidth - 48;
+        c1.height = 260;
+        drawDonut(ctx1, c1.width / 2, 130, 80, [
+          { value: a.placed_students, color: '#10b981', label: 'Placed' },
+          { value: unplaced, color: '#ef4444', label: 'Unplaced' }
+        ]);
+
+        // Draw overview bar chart
+        const c2 = document.getElementById('chart-overview');
+        const ctx2 = c2.getContext('2d');
+        c2.width = c2.parentElement.clientWidth - 48;
+        c2.height = 260;
+        drawBars(ctx2, c2.width, c2.height, [
+          { label: 'Students', value: a.total_students, color: '#7c3aed' },
+          { label: 'Placed', value: a.placed_students, color: '#10b981' },
+          { label: 'Drives', value: a.total_drives, color: '#3b82f6' },
+          { label: 'Colleges', value: a.total_colleges, color: '#f59e0b' }
+        ]);
+
+      } catch(e) { pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`; }
+    })();
+
+    function drawDonut(ctx, cx, cy, r, segments) {
+      const total = segments.reduce((a, s) => a + s.value, 0);
+      if (total === 0) return;
+      let start = -Math.PI / 2;
+      segments.forEach((s, i) => {
+        const angle = (s.value / total) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, start, start + angle);
+        ctx.arc(cx, cy, r * 0.55, start + angle, start, true);
+        ctx.closePath();
+        ctx.fillStyle = s.color;
+        ctx.fill();
+        // Label
+        const mid = start + angle / 2;
+        const lx = cx + Math.cos(mid) * (r + 24);
+        const ly = cy + Math.sin(mid) * (r + 24);
+        ctx.fillStyle = '#f0f0f8';
+        ctx.font = '600 13px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${s.label}: ${s.value}`, lx, ly);
+        start += angle;
+      });
+      // Center text
+      ctx.fillStyle = '#f0f0f8';
+      ctx.font = '800 28px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(total === 0 ? '0%' : ((segments[0].value / total) * 100).toFixed(0) + '%', cx, cy - 6);
+      ctx.font = '400 12px Inter, sans-serif';
+      ctx.fillStyle = '#9898b0';
+      ctx.fillText('Placed', cx, cy + 16);
+    }
+
+    function drawBars(ctx, w, h, bars) {
+      const max = Math.max(...bars.map(b => b.value), 1);
+      const barW = Math.min(60, (w - 80) / bars.length - 20);
+      const baseY = h - 40;
+      const chartH = h - 70;
+      const startX = (w - bars.length * (barW + 20)) / 2;
+      bars.forEach((b, i) => {
+        const x = startX + i * (barW + 20);
+        const barH = (b.value / max) * chartH;
+        // Bar with rounded top
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        ctx.roundRect(x, baseY - barH, barW, barH, [6, 6, 0, 0]);
+        ctx.fill();
+        // Value
+        ctx.fillStyle = '#f0f0f8';
+        ctx.font = '700 14px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(b.value, x + barW / 2, baseY - barH - 10);
+        // Label
+        ctx.fillStyle = '#9898b0';
+        ctx.font = '500 11px Inter, sans-serif';
+        ctx.fillText(b.label, x + barW / 2, baseY + 18);
+      });
+    }
+  </script>
+</body>
+</html>

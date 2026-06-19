@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Students — PMS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="toast-container" id="toast-container"></div>
+  <div class="modal-overlay" id="modal-overlay"><div class="modal" id="modal-content"></div></div>
+  <div id="app"></div>
+  <script src="common.js"></script>
+  <script>
+    (async () => {
+      if (!initPage('students', 'Students', 'View and manage all student profiles')) return;
+      try {
+        const colleges = await api('/colleges').catch(() => []);
+        pb().innerHTML = `
+          <div class="toolbar">
+            <select class="form-control" id="f-college"><option value="">All Colleges</option>${colleges.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+            <select class="form-control" id="f-status"><option value="">All Status</option><option value="placed">Placed</option><option value="unplaced">Unplaced</option></select>
+            <button class="btn btn-primary btn-sm" id="filter-btn">Filter</button>
+            <div class="toolbar-spacer"></div>
+            <span class="text-muted text-sm" id="count-label"></span>
+          </div>
+          <div class="table-wrapper"><table><thead><tr><th>Email</th><th>Roll No</th><th>College</th><th>Branch</th><th>GPA</th><th>Skills</th><th>Status</th></tr></thead><tbody id="s-tbody"><tr><td colspan="7"><div class="spinner" style="margin:20px auto"></div></td></tr></tbody></table></div>`;
+
+        async function loadStudents() {
+          const cid = document.getElementById('f-college').value;
+          const st = document.getElementById('f-status').value;
+          let url = '/students?';
+          if (cid) url += 'college_id=' + cid + '&';
+          if (st) url += 'status=' + st;
+          const data = await api(url);
+          document.getElementById('count-label').textContent = data.length + ' student(s)';
+          document.getElementById('s-tbody').innerHTML = data.length === 0
+            ? '<tr><td colspan="7" class="text-center text-muted" style="padding:30px">No students found</td></tr>'
+            : data.map(s => `<tr>
+                <td><strong>${s.email}</strong></td>
+                <td>${s.roll_number||'—'}</td>
+                <td>${s.college_name||'—'}</td>
+                <td>${s.branch||'—'}</td>
+                <td>${s.gpa||'—'}</td>
+                <td>${s.skills ? s.skills.split(',').slice(0,3).map(sk=>`<span class="badge badge-purple" style="margin:1px">${sk.trim()}</span>`).join('') : '—'}</td>
+                <td>${statusBadge(s.status)}</td>
+              </tr>`).join('');
+        }
+        document.getElementById('filter-btn').onclick = loadStudents;
+        await loadStudents();
+      } catch(e) { pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`; }
+    })();
+  </script>
+</body>
+</html>
