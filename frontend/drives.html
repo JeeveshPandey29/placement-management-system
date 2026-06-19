@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Placement Drives — PMS</title>
+  <title>Placement Drives — PMS 3.0</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,166 +12,117 @@
   <div id="app"></div>
   <script src="common.js"></script>
   <script>
-    (async () => {
-      if (!initPage('drives', 'Placement Drives', 'Browse and manage placement opportunities')) return;
-      const role = auth.getUser().role;
-      try {
-        const drives = await api('/drives');
-        const createBtn = role === 'admin' ? '<button class="btn btn-primary btn-sm" id="create-drive-btn">+ Create Drive</button>' : '';
-        let myAppsBtn = role === 'student' ? '<button class="btn btn-secondary btn-sm" id="my-apps-btn">📋 My Applications</button>' : '';
-
-        pb().innerHTML = `
-          <div class="toolbar"><div class="toolbar-spacer"></div><span class="text-muted text-sm">${drives.length} drive(s)</span>${myAppsBtn}${createBtn}</div>
-          <div class="drives-grid" id="drives-grid">
-            ${drives.length === 0 ? '<div class="empty-state" style="grid-column:1/-1"><h3>No placement drives</h3><p>Check back later for new opportunities</p></div>' :
-            drives.map(d => `<div class="drive-card">
-              <div class="flex-between"><div class="company">${d.company_name}</div>${statusBadge(d.status)}</div>
-              <div class="role">${d.job_role}</div>
-              <div class="drive-meta">
-                <div class="drive-meta-item"><span>Package</span>₹${d.package_lpa} LPA</div>
-                <div class="drive-meta-item"><span>Min CGPA</span>${d.eligibility_cgpa}</div>
-                <div class="drive-meta-item"><span>Date</span>${d.date}</div>
-                <div class="drive-meta-item"><span>Status</span>${d.status}</div>
-              </div>
-              <div class="btn-group">
-                ${role === 'student' ? `<button class="btn btn-primary btn-sm apply-btn" data-id="${d.id}">Apply Now</button>` : ''}
-                ${role !== 'student' ? `<button class="btn btn-secondary btn-sm view-apps-btn" data-id="${d.id}" data-company="${d.company_name}">View Applications</button>` : ''}
-              </div>
-            </div>`).join('')}
-          </div>`;
-
-        // Admin: Create drive
-        document.getElementById('create-drive-btn')?.addEventListener('click', () => {
-          openModal(`<h2>Create Placement Drive</h2>
-            <div class="form-group"><label>Company Name</label><input class="form-control" id="d-company" placeholder="e.g. Google"></div>
-            <div class="form-group"><label>Job Role</label><input class="form-control" id="d-role" placeholder="e.g. Software Engineer"></div>
-            <div class="form-row">
-              <div class="form-group"><label>Package (LPA)</label><input type="number" step="0.1" class="form-control" id="d-pkg" placeholder="12.5"></div>
-              <div class="form-group"><label>Min CGPA</label><input type="number" step="0.1" class="form-control" id="d-cgpa" placeholder="7.0"></div>
+  (async () => {
+    const u = auth.getUser(); if (!u) return;
+    const role = u.role;
+    const createBtn = role==='admin' ? `<button class="btn btn-primary" id="create-drive-btn">${IC.plus} Create Drive</button>` : '';
+    if (!initPage('drives', 'Placement Drives', 'Browse placement opportunities', createBtn)) return;
+    try {
+      const drives = await api('/drives');
+      const myAppsBtn = role==='student' ? `<button class="btn btn-secondary" id="my-apps-btn">📋 My Applications</button>` : '';
+      pb().innerHTML = `
+        <div class="toolbar"><div class="toolbar-spacer"></div><span class="text-muted text-sm">${drives.length} drive(s)</span>${myAppsBtn}</div>
+        <div class="drives-grid">
+          ${drives.length===0?'<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🏢</div><h3>No placement drives yet</h3></div>':
+          drives.map(d=>`<div class="drive-card">
+            <div class="flex-between mb-1">
+              <div class="drive-company">${d.company_name}</div>
+              ${statusBadge(d.status)}
             </div>
-            <div class="form-row">
-              <div class="form-group"><label>Date</label><input type="date" class="form-control" id="d-date"></div>
-              <div class="form-group"><label>Status</label><select class="form-control" id="d-status"><option value="upcoming">Upcoming</option><option value="active">Active</option><option value="completed">Completed</option></select></div>
+            <div class="drive-role">${d.job_role}</div>
+            <div class="drive-meta">
+              <div class="drive-meta-item"><span>Package</span><div class="val">₹${d.package_lpa} LPA</div></div>
+              <div class="drive-meta-item"><span>Min CGPA</span><div class="val">${d.eligibility_cgpa}</div></div>
+              <div class="drive-meta-item"><span>Date</span><div class="val">${fmtDate(d.date)}</div></div>
             </div>
-            <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="d-save">Create Drive</button></div>`);
-          document.getElementById('d-save').onclick = async () => {
-            const company_name = document.getElementById('d-company').value.trim();
-            const job_role = document.getElementById('d-role').value.trim();
-            const package_lpa = parseFloat(document.getElementById('d-pkg').value);
-            const eligibility_cgpa = parseFloat(document.getElementById('d-cgpa').value);
-            const date = document.getElementById('d-date').value;
-            const status = document.getElementById('d-status').value;
-            if (!company_name || !job_role || !package_lpa || !date) return toast('Fill required fields', 'error');
-            try {
-              await api('/drives', { method: 'POST', body: JSON.stringify({ company_name, job_role, package_lpa, eligibility_cgpa, date, status }) });
-              toast('Drive created!', 'success'); closeModal(); location.reload();
-            } catch(e) { toast(e.message, 'error'); }
-          };
-        });
+            <div class="btn-group">
+              ${role==='student'?`<button class="btn btn-primary btn-sm apply-btn" data-id="${d.id}">Apply Now</button>`:''}
+              ${role!=='student'?`<button class="btn btn-secondary btn-sm view-apps-btn" data-id="${d.id}" data-name="${d.company_name}">View Applications</button>`:''}
+            </div>
+          </div>`).join('')}
+        </div>`;
 
-        // Student: Apply to drive
+      if (role==='student') {
         document.querySelectorAll('.apply-btn').forEach(btn => {
           btn.onclick = async () => {
-            btn.disabled = true; btn.textContent = 'Applying...';
-            try {
-              await api(`/drives/${btn.dataset.id}/apply`, { method: 'POST' });
-              toast('Applied successfully!', 'success');
-              btn.textContent = '✓ Applied'; btn.classList.remove('btn-primary'); btn.classList.add('btn-secondary');
-            } catch(e) { toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Apply Now'; }
+            btn.disabled=true; btn.textContent='Applying…';
+            try { await api(`/drives/${btn.dataset.id}/apply`,{method:'POST'}); toast('Applied successfully!','success'); btn.textContent='✓ Applied'; btn.classList.replace('btn-primary','btn-secondary'); }
+            catch(e) { toast(e.message,'error'); btn.disabled=false; btn.textContent='Apply Now'; }
           };
         });
-
-        // Student: My applications
         document.getElementById('my-apps-btn')?.addEventListener('click', async () => {
           try {
             const apps = await api('/drives/my/applications');
             openModal(`<h2>My Applications</h2>
               <div class="table-wrapper"><table><thead><tr><th>Company</th><th>Role</th><th>Status</th></tr></thead><tbody>
-              ${apps.length === 0 ? '<tr><td colspan="3" class="text-center text-muted" style="padding:20px">No applications yet</td></tr>' :
-              apps.map(a => `<tr><td><strong>${a.company_name}</strong></td><td>${a.job_role}</td><td>${statusBadge(a.status)}</td></tr>`).join('')}
+              ${apps.length===0?'<tr><td colspan="3" class="text-center text-muted" style="padding:20px">No applications yet</td></tr>':
+              apps.map(a=>`<tr><td><strong>${a.company_name}</strong></td><td>${a.job_role}</td><td>${statusBadge(a.status)}</td></tr>`).join('')}
               </tbody></table></div>
               <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`);
-          } catch(e) { toast(e.message, 'error'); }
+          } catch(e) { toast(e.message,'error'); }
         });
+      }
 
-        // Admin/Trainer: View drive applications
-        document.querySelectorAll('.view-apps-btn').forEach(btn => {
-          btn.onclick = async () => {
-            const did = btn.dataset.id, company = btn.dataset.company;
-            try {
-              const apps = await api(`/drives/${did}/applications`);
-              openModal(`<h2>Applications — ${company}</h2>
-                <div class="table-wrapper"><table><thead><tr><th>Student</th><th>Status</th><th>Actions</th></tr></thead><tbody>
-                ${apps.length === 0 ? '<tr><td colspan="3" class="text-center text-muted" style="padding:20px">No applications</td></tr>' :
-                apps.map(a => `<tr>
-                  <td>${a.student_email}</td>
-                  <td>${statusBadge(a.status)}</td>
-                  <td><div class="btn-group">
-                    <select class="form-control btn-sm status-select" data-appid="${a.id}" style="max-width:130px;padding:5px 8px">
-                      <option value="pending" ${a.status==='pending'?'selected':''}>Pending</option>
-                      <option value="shortlisted" ${a.status==='shortlisted'?'selected':''}>Shortlisted</option>
-                      <option value="selected" ${a.status==='selected'?'selected':''}>Selected</option>
-                      <option value="rejected" ${a.status==='rejected'?'selected':''}>Rejected</option>
-                    </select>
-                    <button class="btn btn-sm btn-secondary update-status-btn" data-appid="${a.id}">Update</button>
-                    <button class="btn btn-sm btn-secondary fb-btn" data-appid="${a.id}" data-email="${a.student_email}">Feedback</button>
-                  </div></td>
-                </tr>`).join('')}
-                </tbody></table></div>
-                <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`);
+      document.querySelectorAll('.view-apps-btn').forEach(btn => {
+        btn.onclick = async () => {
+          try {
+            const apps = await api(`/drives/${btn.dataset.id}/applications`);
+            openModal(`<h2>Applications — ${btn.dataset.name}</h2>
+              <div class="table-wrapper"><table><thead><tr><th>Student</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+              ${apps.length===0?'<tr><td colspan="3" class="text-center text-muted" style="padding:20px">No applications</td></tr>':
+              apps.map(a=>`<tr>
+                <td><strong>${a.student_name||a.student_email}</strong></td>
+                <td>${statusBadge(a.status)}</td>
+                <td><div class="btn-group">
+                  <select class="form-control btn-sm status-sel" data-appid="${a.id}" style="max-width:120px;padding:5px 8px">
+                    <option value="applied" ${a.status==='applied'?'selected':''}>Applied</option>
+                    <option value="shortlisted" ${a.status==='shortlisted'?'selected':''}>Shortlisted</option>
+                    <option value="selected" ${a.status==='selected'?'selected':''}>Selected</option>
+                    <option value="rejected" ${a.status==='rejected'?'selected':''}>Rejected</option>
+                  </select>
+                  <button class="btn btn-sm btn-primary upd-btn" data-appid="${a.id}">Update</button>
+                </div></td>
+              </tr>`).join('')}
+              </tbody></table></div>
+              <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`, true);
 
-              // Update application status
-              document.querySelectorAll('.update-status-btn').forEach(ub => {
-                ub.onclick = async () => {
-                  const appId = ub.dataset.appid;
-                  const sel = document.querySelector(`.status-select[data-appid="${appId}"]`);
-                  try {
-                    await api(`/drives/applications/${appId}/status?status_val=${sel.value}`, { method: 'PUT' });
-                    toast('Status updated!', 'success');
-                  } catch(e) { toast(e.message, 'error'); }
-                };
-              });
+            document.querySelectorAll('.upd-btn').forEach(ub => {
+              ub.onclick = async () => {
+                const sv = document.querySelector(`.status-sel[data-appid="${ub.dataset.appid}"]`).value;
+                try { await api(`/drives/applications/${ub.dataset.appid}/status?status_val=${sv}`,{method:'PUT'}); toast('Status updated!','success'); }
+                catch(e) { toast(e.message,'error'); }
+              };
+            });
+          } catch(e) { toast(e.message,'error'); }
+        };
+      });
 
-              // Interview feedback
-              document.querySelectorAll('.fb-btn').forEach(fb => {
-                fb.onclick = async () => {
-                  const appId = fb.dataset.appid, email = fb.dataset.email;
-                  // First show existing feedback, then allow adding
-                  let existing = [];
-                  try { existing = await api(`/drives/applications/${appId}/feedback`); } catch(e) {}
-                  openModal(`<h2>Interview Feedback — ${email}</h2>
-                    ${existing.length > 0 ? `<div class="table-wrapper mb-3"><table><thead><tr><th>Round</th><th>Interviewer</th><th>Rating</th><th>Comments</th></tr></thead><tbody>
-                    ${existing.map(f => `<tr><td>${f.round_name}</td><td>${f.interviewer_name}</td><td>${'★'.repeat(f.rating)}${'☆'.repeat(5-f.rating)}</td><td>${f.comments||'—'}</td></tr>`).join('')}
-                    </tbody></table></div>` : ''}
-                    <h3 style="margin:16px 0 12px">Add Feedback</h3>
-                    <div class="form-row">
-                      <div class="form-group"><label>Round Name</label><input class="form-control" id="fb-round" placeholder="e.g. Technical Round 1"></div>
-                      <div class="form-group"><label>Interviewer</label><input class="form-control" id="fb-interviewer" placeholder="e.g. John Doe"></div>
-                    </div>
-                    <div class="form-row">
-                      <div class="form-group"><label>Rating (1-5)</label><select class="form-control" id="fb-rating"><option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option></select></div>
-                      <div class="form-group"><label>Comments</label><input class="form-control" id="fb-comments" placeholder="Optional"></div>
-                    </div>
-                    <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="fb-save">Submit Feedback</button></div>`);
-                  document.getElementById('fb-save').onclick = async () => {
-                    const round_name = document.getElementById('fb-round').value.trim();
-                    const interviewer_name = document.getElementById('fb-interviewer').value.trim();
-                    const rating = parseInt(document.getElementById('fb-rating').value);
-                    const comments = document.getElementById('fb-comments').value.trim() || null;
-                    if (!round_name || !interviewer_name) return toast('Fill required fields', 'error');
-                    try {
-                      await api(`/drives/applications/${appId}/feedback`, { method: 'POST', body: JSON.stringify({ round_name, interviewer_name, rating, comments }) });
-                      toast('Feedback submitted!', 'success'); closeModal();
-                    } catch(e) { toast(e.message, 'error'); }
-                  };
-                };
-              });
-            } catch(e) { toast(e.message, 'error'); }
+      if (role==='admin') {
+        document.getElementById('create-drive-btn').onclick = () => {
+          openModal(`<h2>Create Placement Drive</h2>
+            <div class="form-group"><label>Company Name</label><input class="form-control" id="d-co" placeholder="Google"></div>
+            <div class="form-group"><label>Job Role</label><input class="form-control" id="d-role" placeholder="Software Engineer"></div>
+            <div class="form-row">
+              <div class="form-group"><label>Package (LPA)</label><input type="number" step="0.1" class="form-control" id="d-pkg"></div>
+              <div class="form-group"><label>Min CGPA</label><input type="number" step="0.1" class="form-control" id="d-cgpa"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Date</label><input type="date" class="form-control" id="d-date"></div>
+              <div class="form-group"><label>Status</label><select class="form-control" id="d-status"><option value="upcoming">Upcoming</option><option value="active">Active</option><option value="completed">Completed</option></select></div>
+            </div>
+            <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="d-save">Create</button></div>`);
+          document.getElementById('d-save').onclick = async () => {
+            const company_name=document.getElementById('d-co').value.trim(), job_role=document.getElementById('d-role').value.trim();
+            const package_lpa=parseFloat(document.getElementById('d-pkg').value), eligibility_cgpa=parseFloat(document.getElementById('d-cgpa').value);
+            const date=document.getElementById('d-date').value, status=document.getElementById('d-status').value;
+            if(!company_name||!job_role||!date) return toast('Fill required fields','error');
+            try { await api('/drives',{method:'POST',body:JSON.stringify({company_name,job_role,package_lpa,eligibility_cgpa,date,status})}); toast('Drive created!','success'); closeModal(); location.reload(); }
+            catch(e){toast(e.message,'error');}
           };
-        });
-
-      } catch(e) { pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`; }
-    })();
+        };
+      }
+    } catch(e){ pb().innerHTML=`<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`; }
+  })();
   </script>
 </body>
 </html>

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notifications — PMS 3.0</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="toast-container" id="toast-container"></div>
+  <div class="modal-overlay" id="modal-overlay"><div class="modal" id="modal-content"></div></div>
+  <div id="app"></div>
+  <script src="common.js"></script>
+  <script>
+  (async () => {
+    const u = auth.getUser();
+    if (!u) return;
+    const canSend = u.role === 'admin' || u.role === 'trainer';
+    const sendBtn = canSend ? `<button class="btn btn-primary" id="send-notif-btn">${IC.plus} Send Notification</button>` : '';
+    if (!initPage('notifications', 'Notifications', 'Stay updated with latest announcements', sendBtn)) return;
+
+    async function loadNotifs() {
+      try {
+        const notifs = canSend ? await api('/notifications') : await api('/notifications/my');
+        if (notifs.length === 0) {
+          pb().innerHTML = `<div class="empty-state"><div class="empty-icon">🔔</div><h3>No notifications</h3><p>Nothing here yet</p></div>`;
+          return;
+        }
+        pb().innerHTML = `<div class="notif-list" style="max-width:700px">
+          ${notifs.map(n => `
+            <div class="notif-card ${!n.is_read&&!canSend?'unread':''}" data-id="${n.id}">
+              ${!n.is_read && !canSend ? '<div class="notif-dot"></div>' : ''}
+              <div class="notif-body" style="flex:1">
+                <div class="flex-between">
+                  <div class="notif-title">${n.title}</div>
+                  <div class="flex-center gap-2">
+                    <span class="badge badge-${n.target_type==='all'?'blue':n.target_type==='batch'?'purple':'green'}">${n.target_type}</span>
+                    ${canSend ? `<button class="btn btn-sm btn-danger del-notif" data-id="${n.id}" style="padding:3px 8px">${IC.trash}</button>` : ''}
+                  </div>
+                </div>
+                <div class="notif-msg mt-1">${n.message}</div>
+                <div class="notif-meta">${n.created_by_name||'System'} · ${timeAgo(n.created_at)}</div>
+              </div>
+            </div>`).join('')}
+        </div>`;
+
+        // Mark as read on click (students)
+        if (!canSend) {
+          document.querySelectorAll('.notif-card').forEach(card => {
+            card.onclick = async () => {
+              const id = card.dataset.id;
+              if (card.classList.contains('unread')) {
+                await api(`/notifications/${id}/read`, { method: 'PUT' }).catch(() => {});
+                card.classList.remove('unread');
+                card.querySelector('.notif-dot')?.remove();
+              }
+            };
+          });
+        }
+
+        if (canSend) {
+          document.querySelectorAll('.del-notif').forEach(btn => {
+            btn.onclick = async (e) => {
+              e.stopPropagation();
+              if (!confirm('Delete this notification?')) return;
+              try {
+                await api(`/notifications/${btn.dataset.id}`, { method: 'DELETE' });
+                toast('Deleted', 'success'); loadNotifs();
+              } catch(e) { toast(e.message, 'error'); }
+            };
+          });
+        }
+      } catch (e) {
+        pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`;
+      }
+    }
+
+    if (canSend) {
+      document.getElementById('send-notif-btn').onclick = async () => {
+        const batches = await api('/batches').catch(() => []);
+        const students = await api('/students').catch(() => []);
+        openModal(`<h2>Send Notification</h2>
+          <div class="form-group"><label>Title</label><input class="form-control" id="nt" placeholder="Notification title"></div>
+          <div class="form-group"><label>Message</label><textarea class="form-control" id="nm" placeholder="Write your message…" rows="3"></textarea></div>
+          <div class="form-group"><label>Target</label>
+            <select class="form-control" id="ntype">
+              <option value="all">All Students</option>
+              <option value="batch">Specific Batch</option>
+              <option value="student">Specific Student</option>
+            </select>
+          </div>
+          <div class="form-group hidden" id="batch-sel-grp">
+            <label>Select Batch</label>
+            <select class="form-control" id="n-batch">
+              ${batches.map(b => `<option value="${b.id}">${b.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group hidden" id="student-sel-grp">
+            <label>Select Student</label>
+            <select class="form-control" id="n-student">
+              ${students.map(s => `<option value="${s.user_id}">${s.full_name||s.email}</option>`).join('')}
+            </select>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" id="ns-save">Send</button>
+          </div>`);
+
+        document.getElementById('ntype').onchange = function() {
+          document.getElementById('batch-sel-grp').classList.toggle('hidden', this.value !== 'batch');
+          document.getElementById('student-sel-grp').classList.toggle('hidden', this.value !== 'student');
+        };
+
+        document.getElementById('ns-save').onclick = async () => {
+          const title = document.getElementById('nt').value.trim();
+          const message = document.getElementById('nm').value.trim();
+          const target_type = document.getElementById('ntype').value;
+          let target_id = null;
+          if (target_type === 'batch') target_id = parseInt(document.getElementById('n-batch').value);
+          if (target_type === 'student') target_id = parseInt(document.getElementById('n-student').value);
+          if (!title || !message) return toast('Fill title and message', 'error');
+          try {
+            await api('/notifications', { method: 'POST', body: JSON.stringify({ title, message, target_type, target_id }) });
+            toast('Notification sent!', 'success'); closeModal(); loadNotifs();
+          } catch(e) { toast(e.message, 'error'); }
+        };
+      };
+    }
+
+    await loadNotifs();
+  })();
+  </script>
+</body>
+</html>

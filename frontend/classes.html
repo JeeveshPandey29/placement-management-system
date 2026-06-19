@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Classes — PMS 3.0</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="toast-container" id="toast-container"></div>
+  <div class="modal-overlay" id="modal-overlay"><div class="modal" id="modal-content"></div></div>
+  <div id="app"></div>
+  <script src="common.js"></script>
+  <script>
+  (async () => {
+    const u = auth.getUser();
+    if (!u) return;
+    const canManage = u.role === 'admin' || u.role === 'trainer';
+    const addBtn = canManage ? `<button class="btn btn-primary" id="add-class-btn">${IC.plus} Schedule Class</button>` : '';
+    if (!initPage('classes', 'Classes', canManage ? 'Manage scheduled sessions' : 'Your upcoming sessions', addBtn)) return;
+
+    let batches = [];
+    if (canManage) batches = await api('/batches').catch(() => []);
+
+    async function loadClasses() {
+      try {
+        const classes = await api('/classes');
+        if (classes.length === 0) {
+          pb().innerHTML = `<div class="empty-state"><div class="empty-icon">📅</div><h3>No classes scheduled</h3><p>${canManage ? 'Schedule a class to get started' : 'No classes assigned to your batch yet'}</p></div>`;
+          return;
+        }
+        pb().innerHTML = `<div class="table-wrapper"><table>
+          <thead><tr><th>Title</th><th>Batch</th><th>Date</th><th>Time</th><th>Location</th>${canManage?'<th>Actions</th>':''}</tr></thead>
+          <tbody>
+            ${classes.map(c => `<tr>
+              <td><strong>${c.title}</strong>${c.description?`<br><span class="text-muted text-sm">${c.description}</span>`:''}</td>
+              <td><span class="badge badge-blue">${c.batch_name||'—'}</span></td>
+              <td>${fmtDate(c.class_date)}</td>
+              <td>${c.start_time||'—'}${c.end_time?' – '+c.end_time:''}</td>
+              <td>${c.location||'—'}</td>
+              ${canManage ? `<td><button class="btn btn-sm btn-danger del-class" data-id="${c.id}">${IC.trash}</button></td>` : ''}
+            </tr>`).join('')}
+          </tbody>
+        </table></div>`;
+        if (canManage) {
+          document.querySelectorAll('.del-class').forEach(btn => {
+            btn.onclick = async () => {
+              if (!confirm('Delete this class?')) return;
+              try { await api(`/classes/${btn.dataset.id}`, { method: 'DELETE' }); toast('Deleted', 'success'); loadClasses(); }
+              catch(e) { toast(e.message, 'error'); }
+            };
+          });
+        }
+      } catch(e) {
+        pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`;
+      }
+    }
+
+    if (canManage) {
+      document.getElementById('add-class-btn').onclick = () => {
+        openModal(`<h2>Schedule Class</h2>
+          <div class="form-group"><label>Batch</label>
+            <select class="form-control" id="c-batch">
+              <option value="">Select batch</option>
+              ${batches.map(b => `<option value="${b.id}">${b.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label>Title</label><input class="form-control" id="c-title" placeholder="e.g. Python Basics – Session 3"></div>
+          <div class="form-group"><label>Description</label><input class="form-control" id="c-desc" placeholder="Optional"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Date</label><input type="date" class="form-control" id="c-date"></div>
+            <div class="form-group"><label>Location / Room</label><input class="form-control" id="c-loc" placeholder="e.g. Room 201"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Start Time</label><input type="time" class="form-control" id="c-start"></div>
+            <div class="form-group"><label>End Time</label><input type="time" class="form-control" id="c-end"></div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" id="cs-save">Schedule</button>
+          </div>`);
+        document.getElementById('cs-save').onclick = async () => {
+          const batch_id = parseInt(document.getElementById('c-batch').value);
+          const title = document.getElementById('c-title').value.trim();
+          const description = document.getElementById('c-desc').value.trim() || null;
+          const class_date = document.getElementById('c-date').value;
+          const location = document.getElementById('c-loc').value.trim() || null;
+          const start_time = document.getElementById('c-start').value || null;
+          const end_time = document.getElementById('c-end').value || null;
+          if (!batch_id || !title || !class_date) return toast('Batch, title and date are required', 'error');
+          try {
+            await api('/classes', { method: 'POST', body: JSON.stringify({ batch_id, title, description, class_date, location, start_time, end_time }) });
+            toast('Class scheduled!', 'success'); closeModal(); loadClasses();
+          } catch(e) { toast(e.message, 'error'); }
+        };
+      };
+    }
+
+    await loadClasses();
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Batches — PMS 3.0</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="toast-container" id="toast-container"></div>
+  <div class="modal-overlay" id="modal-overlay"><div class="modal" id="modal-content"></div></div>
+  <div id="app"></div>
+  <script src="common.js"></script>
+  <script>
+  (async () => {
+    const u = auth.getUser();
+    if (!u) return;
+    const isAdmin = u.role === 'admin';
+    const addBtn = isAdmin ? `<button class="btn btn-primary" id="add-batch-btn">${IC.plus} New Batch</button>` : '';
+    if (!initPage('batches', 'Batches', 'Manage training batches', addBtn)) return;
+
+    let trainers = [];
+    if (isAdmin) {
+      trainers = await api('/admin/users?role=trainer').catch(() => []);
+    }
+
+    async function loadBatches() {
+      pb().innerHTML = `<div class="loading-overlay"><div class="spinner"></div></div>`;
+      try {
+        const batches = await api('/batches');
+        if (batches.length === 0) {
+          pb().innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><h3>No batches yet</h3><p>Create a batch to get started</p></div>`;
+          return;
+        }
+        pb().innerHTML = `<div class="grid-2" id="batch-grid">
+          ${batches.map(b => `
+            <div class="batch-card">
+              <div class="flex-between">
+                <div class="batch-name">${b.name}</div>
+                <span class="badge badge-blue">${b.student_count} students</span>
+              </div>
+              <div class="batch-meta">${b.branch || 'No branch'} · Trainer: ${b.trainer_name || 'Unassigned'}</div>
+              <div class="batch-footer">
+                <div class="btn-group">
+                  <button class="btn btn-sm btn-secondary view-students-btn" data-id="${b.id}" data-name="${b.name}">${IC.users} Students</button>
+                  ${isAdmin ? `<button class="btn btn-sm btn-secondary add-students-btn" data-id="${b.id}" data-name="${b.name}">+ Add Students</button>` : ''}
+                  ${isAdmin ? `<button class="btn btn-sm btn-danger del-batch-btn" data-id="${b.id}">${IC.trash}</button>` : ''}
+                </div>
+              </div>
+            </div>`).join('')}
+        </div>`;
+        attachEvents();
+      } catch (e) {
+        pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`;
+      }
+    }
+
+    function attachEvents() {
+      document.querySelectorAll('.view-students-btn').forEach(btn => {
+        btn.onclick = async () => {
+          const bid = btn.dataset.id, name = btn.dataset.name;
+          try {
+            const students = await api(`/batches/${bid}/students`);
+            openModal(`<h2>Students — ${name}</h2>
+              <div class="table-wrapper"><table><thead><tr><th>Name</th><th>Enrollment</th><th>Branch</th><th>GPA</th><th>Status</th>${isAdmin?'<th></th>':''}</tr></thead><tbody>
+              ${students.length === 0
+                ? '<tr><td colspan="6" class="text-center text-muted" style="padding:20px">No students in this batch</td></tr>'
+                : students.map(s => `<tr>
+                    <td><strong>${s.full_name||s.email}</strong></td>
+                    <td>${s.enrollment_number||'—'}</td>
+                    <td>${s.branch||'—'}</td>
+                    <td>${s.gpa||'—'}</td>
+                    <td>${statusBadge(s.status||'unplaced')}</td>
+                    ${isAdmin ? `<td><button class="btn btn-sm btn-danger remove-student" data-bid="${bid}" data-sid="${s.id}">Remove</button></td>` : ''}
+                  </tr>`).join('')}
+              </tbody></table></div>
+              <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`, true);
+            document.querySelectorAll('.remove-student').forEach(rb => {
+              rb.onclick = async () => {
+                if (!confirm('Remove student from batch?')) return;
+                try {
+                  await api(`/batches/${rb.dataset.bid}/students/${rb.dataset.sid}`, { method: 'DELETE' });
+                  toast('Student removed', 'success'); closeModal(); loadBatches();
+                } catch(e) { toast(e.message, 'error'); }
+              };
+            });
+          } catch(e) { toast(e.message, 'error'); }
+        };
+      });
+
+      if (isAdmin) {
+        document.querySelectorAll('.add-students-btn').forEach(btn => {
+          btn.onclick = async () => {
+            const bid = btn.dataset.id, name = btn.dataset.name;
+            const allStudents = await api('/students').catch(() => []);
+            openModal(`<h2>Add Students — ${name}</h2>
+              <p class="text-sm text-muted mb-2">Hold Ctrl/Cmd to select multiple students</p>
+              <div class="form-group">
+                <label>Select Students</label>
+                <select multiple class="form-control" id="add-stu-sel" style="height:200px">
+                  ${allStudents.map(s => `<option value="${s.user_id}">${s.full_name||s.email} (${s.enrollment_number||'No enroll'})</option>`).join('')}
+                </select>
+              </div>
+              <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" id="add-stu-save">Add Selected</button>
+              </div>`);
+            document.getElementById('add-stu-save').onclick = async () => {
+              const sel = [...document.getElementById('add-stu-sel').selectedOptions].map(o => parseInt(o.value));
+              if (!sel.length) return toast('Select at least one student', 'error');
+              try {
+                await api(`/batches/${bid}/students`, { method: 'POST', body: JSON.stringify({ student_ids: sel }) });
+                toast(`${sel.length} student(s) added!`, 'success'); closeModal(); loadBatches();
+              } catch(e) { toast(e.message, 'error'); }
+            };
+          };
+        });
+
+        document.querySelectorAll('.del-batch-btn').forEach(btn => {
+          btn.onclick = async () => {
+            if (!confirm('Delete this batch? This cannot be undone.')) return;
+            try {
+              await api(`/batches/${btn.dataset.id}`, { method: 'DELETE' });
+              toast('Batch deleted', 'success'); loadBatches();
+            } catch(e) { toast(e.message, 'error'); }
+          };
+        });
+      }
+    }
+
+    if (isAdmin) {
+      document.getElementById('add-batch-btn').onclick = () => {
+        openModal(`<h2>Create New Batch</h2>
+          <div class="form-group"><label>Batch Name</label><input class="form-control" id="bn" placeholder="e.g. SD1, GN3, BI2"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Branch</label><input class="form-control" id="bb" placeholder="e.g. Software Dev"></div>
+            <div class="form-group"><label>Assign Trainer</label>
+              <select class="form-control" id="bt">
+                <option value="">No trainer</option>
+                ${trainers.map(t => `<option value="${t.id}">${t.full_name||t.email}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" id="bc-save">Create Batch</button>
+          </div>`);
+        document.getElementById('bc-save').onclick = async () => {
+          const name = document.getElementById('bn').value.trim();
+          const branch = document.getElementById('bb').value.trim() || null;
+          const trainer_id = document.getElementById('bt').value ? parseInt(document.getElementById('bt').value) : null;
+          if (!name) return toast('Enter a batch name', 'error');
+          try {
+            await api('/batches', { method: 'POST', body: JSON.stringify({ name, branch, trainer_id }) });
+            toast('Batch created!', 'success'); closeModal(); loadBatches();
+          } catch(e) { toast(e.message, 'error'); }
+        };
+      };
+    }
+
+    await loadBatches();
+  })();
+  </script>
+</body>
+</html>

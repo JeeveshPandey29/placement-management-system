@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Colleges — PMS</title>
+  <title>Colleges — PMS 3.0</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,45 +12,50 @@
   <div id="app"></div>
   <script src="common.js"></script>
   <script>
-    (async () => {
-      if (!initPage('colleges', 'Colleges', 'View and manage college information')) return;
-      const role = auth.getUser().role;
-      try {
-        const data = await api('/colleges');
-        const addBtn = role === 'admin' ? '<button class="btn btn-primary btn-sm" id="add-college-btn">+ Add College</button>' : '';
-        pb().innerHTML = `
-          <div class="toolbar"><div class="toolbar-spacer"></div><span class="text-muted text-sm">${data.length} college(s)</span>${addBtn}</div>
-          <div class="stats-grid" id="college-grid">
-            ${data.length === 0 ? '<div class="empty-state" style="grid-column:1/-1"><h3>No colleges yet</h3><p>Add a college to get started</p></div>' :
-            data.map(c => `<div class="stat-card">
-              <div class="stat-icon" style="background:rgba(124,58,237,0.15);color:var(--accent-purple)">🎓</div>
-              <div class="stat-value text-sm">${c.name}</div>
-              <div class="stat-label">${c.location}</div>
-            </div>`).join('')}
-          </div>`;
+  (async () => {
+    const u = auth.getUser(); if (!u) return;
+    const isAdmin = u.role === 'admin';
+    const addBtn = isAdmin ? `<button class="btn btn-primary" id="add-col-btn">${IC.plus} Add College</button>` : '';
+    if (!initPage('colleges', 'Colleges', 'Manage affiliated colleges', addBtn)) return;
+    try {
+      const data = await api('/colleges');
+      pb().innerHTML = `
+        <div class="grid-3">
+          ${data.length === 0 ? '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🎓</div><h3>No colleges yet</h3></div>' :
+          data.map(c => `<div class="batch-card">
+            <div class="batch-name">${IC.bldg} ${c.name}</div>
+            <div class="batch-meta">${c.location}</div>
+            ${isAdmin ? `<div class="batch-footer"><button class="btn btn-sm btn-danger del-col" data-id="${c.id}">${IC.trash} Delete</button></div>` : ''}
+          </div>`).join('')}
+        </div>`;
 
-        if (role === 'admin') {
-          document.getElementById('add-college-btn')?.addEventListener('click', () => {
-            openModal(`<h2>Add College</h2>
-              <div class="form-group"><label>College Name</label><input class="form-control" id="c-name" placeholder="e.g. IIT Delhi"></div>
-              <div class="form-group"><label>Location</label><input class="form-control" id="c-loc" placeholder="e.g. New Delhi, India"></div>
-              <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                <button class="btn btn-primary" id="c-save">Add College</button>
-              </div>`);
-            document.getElementById('c-save').onclick = async () => {
-              const name = document.getElementById('c-name').value.trim();
-              const location = document.getElementById('c-loc').value.trim();
-              if (!name || !location) return toast('Fill all fields', 'error');
-              try {
-                await api('/colleges', { method: 'POST', body: JSON.stringify({ name, location }) });
-                toast('College added!', 'success'); closeModal(); location.reload ? window.location.reload() : null;
-              } catch(e) { toast(e.message, 'error'); }
-            };
-          });
-        }
-      } catch(e) { pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`; }
-    })();
+      if (isAdmin) {
+        document.querySelectorAll('.del-col').forEach(btn => {
+          btn.onclick = async () => {
+            if (!confirm('Delete this college?')) return;
+            try { await api(`/colleges/${btn.dataset.id}`, { method: 'DELETE' }); toast('Deleted', 'success'); location.reload(); }
+            catch(e) { toast(e.message, 'error'); }
+          };
+        });
+        document.getElementById('add-col-btn').onclick = () => {
+          openModal(`<h2>Add College</h2>
+            <div class="form-group"><label>College Name</label><input class="form-control" id="cn" placeholder="e.g. MITADT University"></div>
+            <div class="form-group"><label>Location</label><input class="form-control" id="cl" placeholder="e.g. Pune, Maharashtra"></div>
+            <div class="modal-actions">
+              <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+              <button class="btn btn-primary" id="col-save">Add</button>
+            </div>`);
+          document.getElementById('col-save').onclick = async () => {
+            const name = document.getElementById('cn').value.trim();
+            const location = document.getElementById('cl').value.trim();
+            if (!name || !location) return toast('Fill all fields', 'error');
+            try { await api('/colleges', { method: 'POST', body: JSON.stringify({ name, location }) }); toast('College added!', 'success'); closeModal(); location.reload(); }
+            catch(e) { toast(e.message, 'error'); }
+          };
+        };
+      }
+    } catch(e) { pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`; }
+  })();
   </script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Students — PMS</title>
+  <title>Students — PMS 3.0</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,44 +12,80 @@
   <div id="app"></div>
   <script src="common.js"></script>
   <script>
-    (async () => {
-      if (!initPage('students', 'Students', 'View and manage all student profiles')) return;
-      try {
-        const colleges = await api('/colleges').catch(() => []);
-        pb().innerHTML = `
-          <div class="toolbar">
-            <select class="form-control" id="f-college"><option value="">All Colleges</option>${colleges.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
-            <select class="form-control" id="f-status"><option value="">All Status</option><option value="placed">Placed</option><option value="unplaced">Unplaced</option></select>
-            <button class="btn btn-primary btn-sm" id="filter-btn">Filter</button>
-            <div class="toolbar-spacer"></div>
-            <span class="text-muted text-sm" id="count-label"></span>
-          </div>
-          <div class="table-wrapper"><table><thead><tr><th>Email</th><th>Roll No</th><th>College</th><th>Branch</th><th>GPA</th><th>Skills</th><th>Status</th></tr></thead><tbody id="s-tbody"><tr><td colspan="7"><div class="spinner" style="margin:20px auto"></div></td></tr></tbody></table></div>`;
+  (async () => {
+    if (!initPage('students', 'Students', 'View all student profiles')) return;
+    try {
+      const [batches, colleges] = await Promise.all([api('/batches').catch(()=>[]), api('/colleges').catch(()=>[])]);
+      pb().innerHTML = `
+        <div class="toolbar">
+          <select class="form-control" id="f-batch"><option value="">All Batches</option>${batches.map(b=>`<option value="${b.id}">${b.name}</option>`).join('')}</select>
+          <select class="form-control" id="f-status"><option value="">All Status</option><option value="placed">Placed</option><option value="unplaced">Unplaced</option></select>
+          <button class="btn btn-primary btn-sm" id="filter-btn">Filter</button>
+          <span class="toolbar-spacer"></span>
+          <span class="text-muted text-sm" id="count-lbl"></span>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Name</th><th>Enrollment</th><th>Batch</th><th>Branch</th><th>GPA</th><th>Skills</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="s-tbody"><tr><td colspan="8"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>`;
 
-        async function loadStudents() {
-          const cid = document.getElementById('f-college').value;
-          const st = document.getElementById('f-status').value;
-          let url = '/students?';
-          if (cid) url += 'college_id=' + cid + '&';
-          if (st) url += 'status=' + st;
-          const data = await api(url);
-          document.getElementById('count-label').textContent = data.length + ' student(s)';
-          document.getElementById('s-tbody').innerHTML = data.length === 0
-            ? '<tr><td colspan="7" class="text-center text-muted" style="padding:30px">No students found</td></tr>'
-            : data.map(s => `<tr>
-                <td><strong>${s.email}</strong></td>
-                <td>${s.roll_number||'—'}</td>
-                <td>${s.college_name||'—'}</td>
-                <td>${s.branch||'—'}</td>
-                <td>${s.gpa||'—'}</td>
-                <td>${s.skills ? s.skills.split(',').slice(0,3).map(sk=>`<span class="badge badge-purple" style="margin:1px">${sk.trim()}</span>`).join('') : '—'}</td>
-                <td>${statusBadge(s.status)}</td>
-              </tr>`).join('');
-        }
-        document.getElementById('filter-btn').onclick = loadStudents;
-        await loadStudents();
-      } catch(e) { pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`; }
-    })();
+      async function load() {
+        const batch_id = document.getElementById('f-batch').value;
+        const status = document.getElementById('f-status').value;
+        let url = '/students?';
+        if (batch_id) url += 'batch_id=' + batch_id + '&';
+        if (status) url += 'status=' + status;
+        const data = await api(url);
+        document.getElementById('count-lbl').textContent = data.length + ' student(s)';
+        document.getElementById('s-tbody').innerHTML = data.length === 0
+          ? '<tr><td colspan="8" class="text-center text-muted" style="padding:30px">No students found</td></tr>'
+          : data.map(s => `<tr>
+              <td><strong>${s.full_name||s.email}</strong><br><span class="text-muted text-sm">${s.email}</span></td>
+              <td>${s.enrollment_number||'—'}</td>
+              <td>${s.batch_name ? `<span class="badge badge-blue">${s.batch_name}</span>` : '—'}</td>
+              <td>${s.branch||'—'}</td>
+              <td>${s.gpa||'—'}</td>
+              <td>${(s.skills||'').split(',').filter(x=>x.trim()).slice(0,3).map(sk=>`<span class="badge badge-purple" style="margin:1px">${sk.trim()}</span>`).join('')||'—'}</td>
+              <td>${statusBadge(s.status)}</td>
+              <td><button class="btn btn-sm btn-secondary view-profile" data-id="${s.user_id}">${IC.eye}</button></td>
+            </tr>`).join('');
+
+        document.querySelectorAll('.view-profile').forEach(btn => {
+          btn.onclick = async () => {
+            const s = data.find(x => x.user_id == btn.dataset.id);
+            if (!s) return;
+            const edu = Array.isArray(s.education) ? s.education : [];
+            const proj = Array.isArray(s.projects) ? s.projects : [];
+            openModal(`<h2>${s.full_name||s.email}</h2>
+              <div class="profile-grid">
+                <div class="profile-field"><label>Email</label><div class="value">${s.email}</div></div>
+                <div class="profile-field"><label>Enrollment</label><div class="value">${s.enrollment_number||'—'}</div></div>
+                <div class="profile-field"><label>Branch</label><div class="value">${s.branch||'—'}</div></div>
+                <div class="profile-field"><label>GPA</label><div class="value">${s.gpa||'—'}</div></div>
+                <div class="profile-field"><label>Phone</label><div class="value">${s.phone||'—'}</div></div>
+                <div class="profile-field"><label>Status</label><div class="value">${statusBadge(s.status)}</div></div>
+                <div class="profile-field" style="grid-column:1/-1"><label>Skills</label><div class="value">${s.skills||'—'}</div></div>
+                <div class="profile-field" style="grid-column:1/-1"><label>Summary</label><div class="value">${s.resume_summary||'—'}</div></div>
+              </div>
+              ${s.linkedin_url||s.github_url||s.portfolio_url?`<div class="flex-center mt-2 gap-2" style="flex-wrap:wrap">
+                ${s.linkedin_url?`<a href="${s.linkedin_url}" target="_blank" class="btn btn-sm btn-secondary">LinkedIn</a>`:''}
+                ${s.github_url?`<a href="${s.github_url}" target="_blank" class="btn btn-sm btn-secondary">GitHub</a>`:''}
+                ${s.portfolio_url?`<a href="${s.portfolio_url}" target="_blank" class="btn btn-sm btn-secondary">Portfolio</a>`:''}
+                ${s.resume_url?`<a href="${s.resume_url}" target="_blank" class="btn btn-sm btn-primary">View Resume</a>`:''}
+              </div>`:''}
+              ${edu.length?`<div class="divider"></div><strong class="text-sm">Education</strong><div class="mt-1">${edu.map(e=>`<div class="json-item"><div class="json-item-title">${e.degree} — ${e.institution}</div><div class="json-item-sub">${e.year||''} ${e.score?'· '+e.score:''}</div></div>`).join('')}</div>`:''}
+              ${proj.length?`<div class="divider"></div><strong class="text-sm">Projects</strong><div class="mt-1">${proj.map(pr=>`<div class="json-item"><div class="json-item-title">${pr.name}</div><div class="json-item-sub">${pr.description||''}</div></div>`).join('')}</div>`:''}
+              <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>`, true);
+          };
+        });
+      }
+
+      document.getElementById('filter-btn').onclick = load;
+      await load();
+    } catch(e) { pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`; }
+  })();
   </script>
 </body>
 </html>

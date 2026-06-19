@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Attendance — PMS</title>
+  <title>Attendance — PMS 3.0</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,100 +12,104 @@
   <div id="app"></div>
   <script src="common.js"></script>
   <script>
-    (async () => {
-      if (!initPage('attendance', 'Attendance', 'Track and manage student attendance')) return;
-      const role = auth.getUser().role;
-      try {
-        if (role === 'student') {
-          // Student: view own attendance
-          const data = await api('/attendance/my');
-          const total = data.length;
-          const present = data.filter(a => a.status === 'present').length;
-          const pct = total > 0 ? ((present / total) * 100).toFixed(1) : 0;
-          pb().innerHTML = `
-            <div class="stats-grid">
-              <div class="stat-card"><div class="stat-icon" style="background:rgba(16,185,129,0.15);color:var(--accent-green)">✅</div><div class="stat-value">${present}</div><div class="stat-label">Present</div></div>
-              <div class="stat-card"><div class="stat-icon" style="background:rgba(239,68,68,0.15);color:var(--accent-red)">❌</div><div class="stat-value">${data.filter(a=>a.status==='absent').length}</div><div class="stat-label">Absent</div></div>
-              <div class="stat-card"><div class="stat-icon" style="background:rgba(245,158,11,0.15);color:var(--accent-orange)">⏰</div><div class="stat-value">${data.filter(a=>a.status==='late').length}</div><div class="stat-label">Late</div></div>
-              <div class="stat-card"><div class="stat-icon" style="background:rgba(59,130,246,0.15);color:var(--accent-blue)">📊</div><div class="stat-value">${pct}%</div><div class="stat-label">Attendance Rate</div></div>
-            </div>
-            <div class="table-wrapper"><table><thead><tr><th>Date</th><th>Session</th><th>Status</th></tr></thead><tbody>
-            ${data.length === 0 ? '<tr><td colspan="3" class="text-center text-muted" style="padding:30px">No attendance records</td></tr>' :
-            data.map(a => `<tr><td>${a.date}</td><td>${a.session_name}</td><td>${statusBadge(a.status)}</td></tr>`).join('')}
-            </tbody></table></div>`;
-        } else {
-          // Trainer/Admin: record attendance + view all
-          const students = await api('/students').catch(() => []);
-          pb().innerHTML = `
-            <div class="tabs">
-              <button class="tab-btn active" data-tab="record">Record Attendance</button>
-              <button class="tab-btn" data-tab="view">View Records</button>
-            </div>
-            <div id="tab-record">
-              <div class="card">
-                <h3 style="margin-bottom:16px">Mark Attendance</h3>
-                <div class="form-row">
-                  <div class="form-group"><label>Student</label><select class="form-control" id="a-student">
-                    <option value="">Select Student</option>
-                    ${students.map(s => `<option value="${s.user_id}">${s.email} (${s.roll_number||'No Roll'})</option>`).join('')}
-                  </select></div>
-                  <div class="form-group"><label>Date</label><input type="date" class="form-control" id="a-date" value="${new Date().toISOString().split('T')[0]}"></div>
-                </div>
-                <div class="form-row">
-                  <div class="form-group"><label>Session Name</label><input class="form-control" id="a-session" placeholder="e.g. Morning Session"></div>
-                  <div class="form-group"><label>Status</label><select class="form-control" id="a-status">
-                    <option value="present">Present</option><option value="absent">Absent</option><option value="late">Late</option>
-                  </select></div>
-                </div>
-                <button class="btn btn-primary" id="a-submit">Record Attendance</button>
+  (async () => {
+    if (!initPage('attendance', 'Attendance', 'Track student attendance')) return;
+    const role = auth.getUser().role;
+    try {
+      if (role === 'student') {
+        const data = await api('/attendance/my');
+        const present = data.filter(a=>a.status==='present').length;
+        const pct = data.length > 0 ? ((present/data.length)*100).toFixed(1) : 0;
+        pb().innerHTML = `
+          <div class="stats-grid">
+            <div class="stat-card"><div class="stat-icon" style="background:#f0fdf4;color:#10b981">✅</div><div class="stat-value">${present}</div><div class="stat-label">Present</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#fef2f2;color:#ef4444">❌</div><div class="stat-value">${data.filter(a=>a.status==='absent').length}</div><div class="stat-label">Absent</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#fef3c7;color:#f59e0b">⏰</div><div class="stat-value">${data.filter(a=>a.status==='late').length}</div><div class="stat-label">Late</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6">📊</div><div class="stat-value">${pct}%</div><div class="stat-label">Rate</div></div>
+          </div>
+          <div class="table-wrapper"><table>
+            <thead><tr><th>Date</th><th>Session</th><th>Status</th></tr></thead>
+            <tbody>${data.length===0?'<tr><td colspan="3" class="text-center text-muted" style="padding:30px">No records</td></tr>':data.map(a=>`<tr><td>${fmtDate(a.date)}</td><td>${a.session_name}</td><td>${statusBadge(a.status)}</td></tr>`).join('')}</tbody>
+          </table></div>`;
+      } else {
+        const [students, batches] = await Promise.all([api('/students').catch(()=>[]), api('/batches').catch(()=>[])]);
+        pb().innerHTML = `
+          <div class="tabs">
+            <button class="tab-btn active" data-tab="record">Record Attendance</button>
+            <button class="tab-btn" data-tab="view">View Records</button>
+          </div>
+          <div id="tab-record">
+            <div class="card" style="max-width:600px">
+              <h3 style="margin-bottom:16px">Mark Attendance</h3>
+              <div class="form-row">
+                <div class="form-group"><label>Student</label><select class="form-control" id="a-student"><option value="">Select Student</option>${students.map(s=>`<option value="${s.user_id}">${s.full_name||s.email} (${s.enrollment_number||''})</option>`).join('')}</select></div>
+                <div class="form-group"><label>Batch</label><select class="form-control" id="a-batch"><option value="">No batch</option>${batches.map(b=>`<option value="${b.id}">${b.name}</option>`).join('')}</select></div>
               </div>
-            </div>
-            <div id="tab-view" class="hidden">
-              <div class="toolbar">
-                <select class="form-control" id="av-student"><option value="">All Students</option>${students.map(s=>`<option value="${s.user_id}">${s.email}</option>`).join('')}</select>
-                <button class="btn btn-primary btn-sm" id="av-filter">Filter</button>
+              <div class="form-row">
+                <div class="form-group"><label>Date</label><input type="date" class="form-control" id="a-date" value="${new Date().toISOString().split('T')[0]}"></div>
+                <div class="form-group"><label>Session Name</label><input class="form-control" id="a-session" placeholder="e.g. Morning Session"></div>
               </div>
-              <div class="table-wrapper"><table><thead><tr><th>Student</th><th>Date</th><th>Session</th><th>Status</th></tr></thead><tbody id="av-tbody"><tr><td colspan="4" class="text-center text-muted" style="padding:30px">Select a student or view all</td></tr></tbody></table></div>
-            </div>`;
+              <div class="form-group"><label>Status</label>
+                <select class="form-control" id="a-status">
+                  <option value="present">Present</option><option value="absent">Absent</option><option value="late">Late</option>
+                </select>
+              </div>
+              <button class="btn btn-primary" id="a-submit">Record Attendance</button>
+            </div>
+          </div>
+          <div id="tab-view" class="hidden">
+            <div class="toolbar">
+              <select class="form-control" id="av-student"><option value="">All Students</option>${students.map(s=>`<option value="${s.user_id}">${s.full_name||s.email}</option>`).join('')}</select>
+              <select class="form-control" id="av-batch"><option value="">All Batches</option>${batches.map(b=>`<option value="${b.id}">${b.name}</option>`).join('')}</select>
+              <button class="btn btn-primary btn-sm" id="av-filter">Filter</button>
+            </div>
+            <div class="table-wrapper"><table><thead><tr><th>Student</th><th>Date</th><th>Session</th><th>Status</th><th></th></tr></thead><tbody id="av-tbody"><tr><td colspan="5" class="text-center text-muted" style="padding:24px">Click Filter to load records</td></tr></tbody></table></div>
+          </div>`;
 
-          // Tab switching
-          document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.onclick = () => {
-              document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-              btn.classList.add('active');
-              document.getElementById('tab-record').classList.toggle('hidden', btn.dataset.tab !== 'record');
-              document.getElementById('tab-view').classList.toggle('hidden', btn.dataset.tab !== 'view');
-            };
-          });
-
-          // Record attendance
-          document.getElementById('a-submit').onclick = async () => {
-            const sid = document.getElementById('a-student').value;
-            const date = document.getElementById('a-date').value;
-            const session_name = document.getElementById('a-session').value.trim();
-            const status = document.getElementById('a-status').value;
-            if (!sid || !date || !session_name) return toast('Fill all fields', 'error');
-            try {
-              await api('/attendance', { method: 'POST', body: JSON.stringify({ student_id: parseInt(sid), date, status, session_name }) });
-              toast('Attendance recorded!', 'success');
-            } catch(e) { toast(e.message, 'error'); }
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+          btn.onclick = () => {
+            document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('tab-record').classList.toggle('hidden', btn.dataset.tab!=='record');
+            document.getElementById('tab-view').classList.toggle('hidden', btn.dataset.tab!=='view');
           };
+        });
 
-          // View/filter attendance
-          document.getElementById('av-filter').onclick = async () => {
-            const sid = document.getElementById('av-student').value;
-            let url = '/attendance';
-            if (sid) url += '?student_id=' + sid;
-            try {
-              const data = await api(url);
-              document.getElementById('av-tbody').innerHTML = data.length === 0
-                ? '<tr><td colspan="4" class="text-center text-muted" style="padding:30px">No records found</td></tr>'
-                : data.map(a => `<tr><td>${a.student_email}</td><td>${a.date}</td><td>${a.session_name}</td><td>${statusBadge(a.status)}</td></tr>`).join('');
-            } catch(e) { toast(e.message, 'error'); }
-          };
-        }
-      } catch(e) { pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`; }
-    })();
+        document.getElementById('a-submit').onclick = async () => {
+          const student_id = parseInt(document.getElementById('a-student').value);
+          const date = document.getElementById('a-date').value;
+          const session_name = document.getElementById('a-session').value.trim();
+          const status = document.getElementById('a-status').value;
+          const batch_id = document.getElementById('a-batch').value ? parseInt(document.getElementById('a-batch').value) : null;
+          if (!student_id || !date || !session_name) return toast('Fill all required fields', 'error');
+          try {
+            await api('/attendance', { method: 'POST', body: JSON.stringify({ student_id, date, status, session_name, batch_id }) });
+            toast('Attendance recorded!', 'success');
+          } catch(e) { toast(e.message, 'error'); }
+        };
+
+        document.getElementById('av-filter').onclick = async () => {
+          const sid = document.getElementById('av-student').value;
+          const bid = document.getElementById('av-batch').value;
+          let url = '/attendance?';
+          if (sid) url += 'student_id=' + sid + '&';
+          if (bid) url += 'batch_id=' + bid;
+          try {
+            const data = await api(url);
+            document.getElementById('av-tbody').innerHTML = data.length === 0
+              ? '<tr><td colspan="5" class="text-center text-muted" style="padding:24px">No records found</td></tr>'
+              : data.map(a => `<tr><td><strong>${a.student_name||a.student_email}</strong></td><td>${fmtDate(a.date)}</td><td>${a.session_name}</td><td>${statusBadge(a.status)}</td><td><button class="btn btn-sm btn-danger del-att" data-id="${a.id}">${IC.trash}</button></td></tr>`).join('');
+            document.querySelectorAll('.del-att').forEach(btn => {
+              btn.onclick = async () => {
+                try { await api(`/attendance/${btn.dataset.id}`, { method: 'DELETE' }); toast('Deleted', 'success'); document.getElementById('av-filter').click(); }
+                catch(e) { toast(e.message, 'error'); }
+              };
+            });
+          } catch(e) { toast(e.message, 'error'); }
+        };
+      }
+    } catch(e) { pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`; }
+  })();
   </script>
 </body>
 </html>

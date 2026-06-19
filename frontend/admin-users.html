@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Management — PMS 3.0</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="toast-container" id="toast-container"></div>
+  <div class="modal-overlay" id="modal-overlay"><div class="modal" id="modal-content"></div></div>
+  <div id="app"></div>
+  <script src="common.js"></script>
+  <script>
+  (async () => {
+    const u = auth.getUser();
+    if (!u || u.role !== 'admin') { location.href = 'dashboard.html'; return; }
+    if (!initPage('admin-users', 'User Management', 'Create and manage all user accounts',
+      `<button class="btn btn-primary" id="add-user-btn">${IC.plus} Add User</button>`)) return;
+
+    async function loadUsers() {
+      try {
+        const users = await api('/admin/users');
+        pb().innerHTML = `
+          <div class="toolbar">
+            <select class="form-control" id="role-filter">
+              <option value="">All Roles</option>
+              <option value="admin">Admin</option>
+              <option value="trainer">Trainer</option>
+              <option value="student">Student</option>
+            </select>
+            <span class="text-muted text-sm toolbar-spacer">${users.length} user(s)</span>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Password</th><th>Created</th><th>Actions</th></tr></thead>
+              <tbody id="users-tbody">
+                ${renderRows(users)}
+              </tbody>
+            </table>
+          </div>`;
+
+        document.getElementById('role-filter').onchange = async function() {
+          const role = this.value;
+          const filtered = role ? users.filter(u => u.role === role) : users;
+          document.getElementById('users-tbody').innerHTML = renderRows(filtered);
+          attachActions();
+        };
+        attachActions();
+      } catch(e) {
+        pb().innerHTML = `<div class="empty-state"><h3>Error</h3><p>${e.message}</p></div>`;
+      }
+    }
+
+    function renderRows(users) {
+      if (!users.length) return '<tr><td colspan="6" class="text-center text-muted" style="padding:30px">No users found</td></tr>';
+      return users.map(u => `<tr>
+        <td><strong>${u.full_name || '—'}</strong></td>
+        <td>${u.email}</td>
+        <td>${statusBadge(u.role)}</td>
+        <td>${u.must_change_password ? '<span class="badge badge-orange">Pending</span>' : '<span class="badge badge-green">Set</span>'}</td>
+        <td class="text-muted text-sm">${fmtDate(u.created_at)}</td>
+        <td>
+          <button class="btn btn-sm btn-danger del-user" data-id="${u.id}" data-name="${u.full_name||u.email}">${IC.trash}</button>
+        </td>
+      </tr>`).join('');
+    }
+
+    function attachActions() {
+      document.querySelectorAll('.del-user').forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm(`Delete user "${btn.dataset.name}"? This is permanent.`)) return;
+          try {
+            await api(`/admin/users/${btn.dataset.id}`, { method: 'DELETE' });
+            toast('User deleted', 'success'); loadUsers();
+          } catch(e) { toast(e.message, 'error'); }
+        };
+      });
+    }
+
+    document.getElementById('add-user-btn').onclick = () => {
+      openModal(`<h2>Add New User</h2>
+        <div class="form-row">
+          <div class="form-group"><label>Full Name</label><input class="form-control" id="nu-name" placeholder="John Doe"></div>
+          <div class="form-group"><label>Email</label><input type="email" class="form-control" id="nu-email" placeholder="john@mitadt.edu.in"></div>
+        </div>
+        <div class="form-group"><label>Role</label>
+          <select class="form-control" id="nu-role">
+            <option value="student">Student</option>
+            <option value="trainer">Trainer</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div id="student-extras">
+          <div class="form-row">
+            <div class="form-group"><label>Enrollment Number</label><input class="form-control" id="nu-enroll" placeholder="MIT2024001"></div>
+            <div class="form-group"><label>Branch</label><input class="form-control" id="nu-branch" placeholder="Computer Science"></div>
+          </div>
+        </div>
+        <div class="card mt-1" style="background:#eff6ff;border-color:#bfdbfe;padding:12px">
+          <p class="text-sm" style="color:#1d4ed8">Default password = first name (lowercase). User must change it on first login.</p>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" id="nu-save">Create User</button>
+        </div>`);
+
+      document.getElementById('nu-role').onchange = function() {
+        document.getElementById('student-extras').classList.toggle('hidden', this.value !== 'student');
+      };
+
+      document.getElementById('nu-save').onclick = async () => {
+        const full_name = document.getElementById('nu-name').value.trim();
+        const email = document.getElementById('nu-email').value.trim();
+        const role = document.getElementById('nu-role').value;
+        const enrollment_number = document.getElementById('nu-enroll')?.value.trim() || null;
+        const branch = document.getElementById('nu-branch')?.value.trim() || null;
+        if (!full_name || !email) return toast('Name and email required', 'error');
+        try {
+          await api('/admin/users', { method: 'POST', body: JSON.stringify({ full_name, email, role, enrollment_number, branch }) });
+          toast(`${role} account created! Default password: ${full_name.split(' ')[0].toLowerCase()}`, 'success');
+          closeModal(); loadUsers();
+        } catch(e) { toast(e.message, 'error'); }
+      };
+    };
+
+    await loadUsers();
+  })();
+  </script>
+</body>
+</html>

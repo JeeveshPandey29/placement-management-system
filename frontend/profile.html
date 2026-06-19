@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Profile — PMS</title>
+  <title>My Profile — PMS 3.0</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,86 +12,261 @@
   <div id="app"></div>
   <script src="common.js"></script>
   <script>
-    (async () => {
-      if (!initPage('profile', 'My Profile', 'View and update your student profile')) return;
-      const user = auth.getUser();
-      try {
-        const p = await api('/students/profile');
-        let colleges = [];
-        try { colleges = await api('/colleges'); } catch(e) {}
-        const ini = p.email[0].toUpperCase();
-        pb().innerHTML = `
-          <div class="profile-header">
-            <div class="profile-avatar">${ini}</div>
-            <div class="profile-meta">
-              <h2>${p.email}</h2>
-              <p>${p.college_name || 'No college assigned'} · ${p.branch || 'No branch'}</p>
-              <div class="mt-1">${statusBadge(p.status)}</div>
-            </div>
-          </div>
-          <div class="profile-grid">
-            <div class="profile-field"><label>Roll Number</label><div class="value">${p.roll_number || '—'}</div></div>
-            <div class="profile-field"><label>GPA</label><div class="value">${p.gpa || '—'}</div></div>
-            <div class="profile-field"><label>College</label><div class="value">${p.college_name || '—'}</div></div>
-            <div class="profile-field"><label>Branch</label><div class="value">${p.branch || '—'}</div></div>
-            <div class="profile-field"><label>Skills</label><div class="value">${p.skills || '—'}</div></div>
-            <div class="profile-field"><label>Resume URL</label><div class="value">${p.resume_url ? '<a href="'+p.resume_url+'" target="_blank" style="color:var(--accent-cyan)">View Resume</a>' : '—'}</div></div>
-          </div>
-          <div class="mt-3"><button class="btn btn-primary" id="edit-btn">✏️ Edit Profile</button></div>`;
+  (async () => {
+    if (!initPage('profile', 'My Profile', 'View and update your profile')) return;
+    try {
+      const [p, colleges] = await Promise.all([api('/students/profile'), api('/colleges').catch(() => [])]);
+      const ini = (p.full_name || p.email)[0].toUpperCase();
 
-        document.getElementById('edit-btn').onclick = () => {
-          openModal(`
-            <h2>Edit Profile</h2>
-            <div class="form-group"><label>Roll Number</label><input class="form-control" id="e-roll" value="${p.roll_number||''}"></div>
-            <div class="form-row">
-              <div class="form-group"><label>College</label><select class="form-control" id="e-college">
-                <option value="">Select College</option>
-                ${colleges.map(c => `<option value="${c.id}" ${c.id===p.college_id?'selected':''}>${c.name}</option>`).join('')}
-              </select></div>
-              <div class="form-group"><label>Branch</label><input class="form-control" id="e-branch" value="${p.branch||''}"></div>
+      function renderProfile() {
+        const edu = Array.isArray(p.education) ? p.education : [];
+        const proj = Array.isArray(p.projects) ? p.projects : [];
+        const certs = Array.isArray(p.certifications) ? p.certifications : [];
+
+        pb().innerHTML = `
+          <div class="profile-hero">
+            <div class="profile-avatar-lg">${ini}</div>
+            <div class="profile-hero-info">
+              <h2>${p.full_name || p.email}</h2>
+              <p>${p.email}</p>
+              <p style="color:rgba(255,255,255,0.5);font-size:0.8rem">${p.branch||''} ${p.college_name?'· '+p.college_name:''} ${p.batch_name?'· Batch: '+p.batch_name:''}</p>
+              <div class="hero-badges">
+                ${statusBadge(p.status)}
+                ${p.enrollment_number ? `<span class="badge badge-gray">${p.enrollment_number}</span>` : ''}
+              </div>
             </div>
-            <div class="form-row">
-              <div class="form-group"><label>GPA</label><input class="form-control" id="e-gpa" type="number" step="0.01" min="0" max="10" value="${p.gpa||''}"></div>
-              <div class="form-group"><label>Status</label><select class="form-control" id="e-status">
-                <option value="unplaced" ${p.status==='unplaced'?'selected':''}>Unplaced</option>
-                <option value="placed" ${p.status==='placed'?'selected':''}>Placed</option>
-              </select></div>
+            <button class="btn btn-secondary" id="edit-btn" style="margin-left:auto;flex-shrink:0">${IC.edit} Edit Profile</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" class="responsive-grid">
+            <div>
+              <div class="profile-section">
+                <h3>Basic Information</h3>
+                <div class="profile-grid">
+                  <div class="profile-field"><label>Enrollment No</label><div class="value">${p.enrollment_number||'—'}</div></div>
+                  <div class="profile-field"><label>Roll Number</label><div class="value">${p.roll_number||'—'}</div></div>
+                  <div class="profile-field"><label>Branch</label><div class="value">${p.branch||'—'}</div></div>
+                  <div class="profile-field"><label>GPA / CGPA</label><div class="value">${p.gpa||'—'}</div></div>
+                  <div class="profile-field"><label>Phone</label><div class="value">${p.phone||'—'}</div></div>
+                  <div class="profile-field"><label>Date of Birth</label><div class="value">${p.dob ? fmtDate(p.dob) : '—'}</div></div>
+                  <div class="profile-field" style="grid-column:1/-1"><label>Address</label><div class="value">${p.address||'—'}</div></div>
+                </div>
+              </div>
+              <div class="profile-section">
+                <h3>Online Presence</h3>
+                <div class="profile-grid">
+                  <div class="profile-field"><label>LinkedIn</label><div class="value">${p.linkedin_url?`<a href="${p.linkedin_url}" target="_blank">View Profile</a>`:'—'}</div></div>
+                  <div class="profile-field"><label>GitHub</label><div class="value">${p.github_url?`<a href="${p.github_url}" target="_blank">View Profile</a>`:'—'}</div></div>
+                  <div class="profile-field"><label>Portfolio</label><div class="value">${p.portfolio_url?`<a href="${p.portfolio_url}" target="_blank">Visit</a>`:'—'}</div></div>
+                  <div class="profile-field"><label>Resume</label><div class="value">${p.resume_url?`<a href="${p.resume_url}" target="_blank">View Resume</a>`:'—'}</div></div>
+                </div>
+              </div>
             </div>
-            <div class="form-group"><label>Skills</label><input class="form-control" id="e-skills" value="${p.skills||''}" placeholder="Python, Java, SQL..."></div>
-            <div class="form-group"><label>Resume URL</label><input class="form-control" id="e-resume" value="${p.resume_url||''}" placeholder="https://..."></div>
+            <div>
+              <div class="profile-section">
+                <h3>Resume Summary</h3>
+                <p style="font-size:0.88rem;color:var(--text-secondary);line-height:1.7">${p.resume_summary||'No summary added yet.'}</p>
+              </div>
+              <div class="profile-section">
+                <h3>Skills</h3>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                  ${(p.skills||'').split(',').filter(s=>s.trim()).map(s=>`<span class="badge badge-blue">${s.trim()}</span>`).join('') || '<p class="text-muted text-sm">No skills added</p>'}
+                </div>
+              </div>
+              <div class="profile-section">
+                <h3>Education</h3>
+                ${edu.length ? edu.map(e => `<div class="json-item"><div class="json-item-title">${e.degree||''} — ${e.institution||''}</div><div class="json-item-sub">${e.year||''} ${e.score?'· Score: '+e.score:''}</div></div>`).join('') : '<p class="text-muted text-sm">No education added</p>'}
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:0" class="responsive-grid">
+            <div class="profile-section">
+              <h3>Projects</h3>
+              ${proj.length ? proj.map(pr => `<div class="json-item"><div class="json-item-title">${pr.name||''}</div><div class="json-item-sub">${pr.description||''}</div>${pr.link?`<div class="mt-1"><a href="${pr.link}" target="_blank" style="font-size:0.78rem;color:var(--blue)">View Project →</a></div>`:''}</div>`).join('') : '<p class="text-muted text-sm">No projects added</p>'}
+            </div>
+            <div class="profile-section">
+              <h3>Certifications</h3>
+              ${certs.length ? certs.map(c => `<div class="json-item"><div class="json-item-title">${c.name||''}</div><div class="json-item-sub">${c.issuer||''} ${c.year?'· '+c.year:''}</div></div>`).join('') : '<p class="text-muted text-sm">No certifications added</p>'}
+            </div>
+          </div>
+
+          <div class="mt-2 mb-3">
+            <button class="btn btn-secondary" id="change-pw-btn">🔒 Change Password</button>
+          </div>`;
+
+        document.getElementById('edit-btn').onclick = () => openEditModal();
+        document.getElementById('change-pw-btn').onclick = () => {
+          openModal(`<h2>Change Password</h2>
+            <div class="form-group"><label>Current Password</label><input type="password" class="form-control" id="cp-old"></div>
+            <div class="form-group"><label>New Password</label><input type="password" class="form-control" id="cp-new" placeholder="Min 6 characters"></div>
             <div class="modal-actions">
               <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-              <button class="btn btn-primary" id="save-btn">Save Changes</button>
-            </div>
-          `);
-          document.getElementById('save-btn').onclick = async () => {
-            const body = {};
-            const roll = document.getElementById('e-roll').value.trim();
-            const cid = document.getElementById('e-college').value;
-            const branch = document.getElementById('e-branch').value.trim();
-            const gpa = document.getElementById('e-gpa').value;
-            const skills = document.getElementById('e-skills').value.trim();
-            const resume = document.getElementById('e-resume').value.trim();
-            const status = document.getElementById('e-status').value;
-            if (roll) body.roll_number = roll;
-            if (cid) body.college_id = parseInt(cid);
-            if (branch) body.branch = branch;
-            if (gpa) body.gpa = parseFloat(gpa);
-            if (skills) body.skills = skills;
-            if (resume) body.resume_url = resume;
-            body.status = status;
+              <button class="btn btn-primary" id="cp-save">Update Password</button>
+            </div>`);
+          document.getElementById('cp-save').onclick = async () => {
+            const old_password = document.getElementById('cp-old').value;
+            const new_password = document.getElementById('cp-new').value;
+            if (!old_password || new_password.length < 6) return toast('Fill fields correctly', 'error');
             try {
-              await api('/students/profile', { method: 'PUT', body: JSON.stringify(body) });
-              toast('Profile updated!', 'success');
-              closeModal();
-              location.reload();
+              await api('/change-password', { method: 'POST', body: JSON.stringify({ old_password, new_password }) });
+              toast('Password changed!', 'success'); closeModal();
             } catch(e) { toast(e.message, 'error'); }
           };
         };
-      } catch (e) {
-        pb().innerHTML = `<div class="empty-state"><h3>Profile not found</h3><p>${e.message}</p><p class="mt-2 text-muted">Only student accounts have profiles.</p></div>`;
       }
-    })();
+
+      function openEditModal() {
+        const edu = Array.isArray(p.education) ? [...p.education] : [];
+        const proj = Array.isArray(p.projects) ? [...p.projects] : [];
+        const certs = Array.isArray(p.certifications) ? [...p.certifications] : [];
+
+        openModal(`<h2>Edit Profile</h2>
+          <div class="tabs" id="edit-tabs">
+            <button class="tab-btn active" data-tab="basic">Basic</button>
+            <button class="tab-btn" data-tab="resume">Resume</button>
+            <button class="tab-btn" data-tab="edu">Education</button>
+            <button class="tab-btn" data-tab="proj">Projects</button>
+            <button class="tab-btn" data-tab="certs">Certs</button>
+          </div>
+          <div id="tab-basic">
+            <div class="form-row">
+              <div class="form-group"><label>Enrollment No</label><input class="form-control" id="e-enroll" value="${p.enrollment_number||''}"></div>
+              <div class="form-group"><label>Roll Number</label><input class="form-control" id="e-roll" value="${p.roll_number||''}"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Branch</label><input class="form-control" id="e-branch" value="${p.branch||''}"></div>
+              <div class="form-group"><label>GPA</label><input type="number" step="0.01" min="0" max="10" class="form-control" id="e-gpa" value="${p.gpa||''}"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Phone</label><input class="form-control" id="e-phone" value="${p.phone||''}"></div>
+              <div class="form-group"><label>Date of Birth</label><input type="date" class="form-control" id="e-dob" value="${p.dob||''}"></div>
+            </div>
+            <div class="form-group"><label>Address</label><textarea class="form-control" id="e-addr">${p.address||''}</textarea></div>
+            <div class="form-group"><label>Skills (comma-separated)</label><input class="form-control" id="e-skills" value="${p.skills||''}" placeholder="Python, Java, SQL, React"></div>
+          </div>
+          <div id="tab-resume" class="hidden">
+            <div class="form-group"><label>Resume Summary</label><textarea class="form-control" id="e-summary" rows="4" placeholder="Brief professional summary…">${p.resume_summary||''}</textarea></div>
+            <div class="form-row">
+              <div class="form-group"><label>LinkedIn URL</label><input class="form-control" id="e-li" value="${p.linkedin_url||''}" placeholder="https://linkedin.com/in/…"></div>
+              <div class="form-group"><label>GitHub URL</label><input class="form-control" id="e-gh" value="${p.github_url||''}" placeholder="https://github.com/…"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Portfolio URL</label><input class="form-control" id="e-port" value="${p.portfolio_url||''}" placeholder="https://…"></div>
+              <div class="form-group"><label>Resume URL</label><input class="form-control" id="e-res" value="${p.resume_url||''}" placeholder="Google Drive / Notion link"></div>
+            </div>
+          </div>
+          <div id="tab-edu" class="hidden">
+            <div id="edu-list">${edu.map((e,i)=>`<div class="json-item" data-i="${i}"><div class="json-item-title">${e.degree} — ${e.institution}</div><div class="json-item-sub">${e.year||''} ${e.score?'· '+e.score:''}</div><button class="json-item-remove" data-type="edu" data-i="${i}">✕</button></div>`).join('')}</div>
+            <div class="card mt-2" style="padding:14px">
+              <div class="form-row"><div class="form-group"><label>Degree</label><input class="form-control" id="ne-deg" placeholder="B.Tech CSE"></div><div class="form-group"><label>Institution</label><input class="form-control" id="ne-inst" placeholder="MITADT University"></div></div>
+              <div class="form-row"><div class="form-group"><label>Year</label><input class="form-control" id="ne-yr" placeholder="2022–2026"></div><div class="form-group"><label>Score / %</label><input class="form-control" id="ne-sc" placeholder="8.5 CGPA"></div></div>
+              <button class="btn btn-secondary btn-sm" id="add-edu">+ Add Education</button>
+            </div>
+          </div>
+          <div id="tab-proj" class="hidden">
+            <div id="proj-list">${proj.map((pr,i)=>`<div class="json-item"><div class="json-item-title">${pr.name}</div><div class="json-item-sub">${pr.description||''}</div><button class="json-item-remove" data-type="proj" data-i="${i}">✕</button></div>`).join('')}</div>
+            <div class="card mt-2" style="padding:14px">
+              <div class="form-group"><label>Project Name</label><input class="form-control" id="np-name" placeholder="My Awesome Project"></div>
+              <div class="form-group"><label>Description</label><input class="form-control" id="np-desc" placeholder="Brief description"></div>
+              <div class="form-group"><label>Link (optional)</label><input class="form-control" id="np-link" placeholder="https://github.com/…"></div>
+              <button class="btn btn-secondary btn-sm" id="add-proj">+ Add Project</button>
+            </div>
+          </div>
+          <div id="tab-certs" class="hidden">
+            <div id="cert-list">${certs.map((c,i)=>`<div class="json-item"><div class="json-item-title">${c.name}</div><div class="json-item-sub">${c.issuer||''} ${c.year?'· '+c.year:''}</div><button class="json-item-remove" data-type="cert" data-i="${i}">✕</button></div>`).join('')}</div>
+            <div class="card mt-2" style="padding:14px">
+              <div class="form-row"><div class="form-group"><label>Certification Name</label><input class="form-control" id="nc-name" placeholder="AWS Solutions Architect"></div><div class="form-group"><label>Issuer</label><input class="form-control" id="nc-iss" placeholder="Amazon"></div></div>
+              <div class="form-group"><label>Year</label><input class="form-control" id="nc-yr" placeholder="2024"></div>
+              <button class="btn btn-secondary btn-sm" id="add-cert">+ Add Certification</button>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" id="ep-save">Save All Changes</button>
+          </div>`, true);
+
+        // Tab switching
+        document.querySelectorAll('#edit-tabs .tab-btn').forEach(btn => {
+          btn.onclick = () => {
+            document.querySelectorAll('#edit-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            ['basic','resume','edu','proj','certs'].forEach(t => document.getElementById('tab-'+t).classList.toggle('hidden', t !== btn.dataset.tab));
+          };
+        });
+
+        // Remove items
+        document.addEventListener('click', function handler(e) {
+          if (e.target.classList.contains('json-item-remove')) {
+            const type = e.target.dataset.type, idx = parseInt(e.target.dataset.i);
+            if (type === 'edu') edu.splice(idx, 1);
+            if (type === 'proj') proj.splice(idx, 1);
+            if (type === 'cert') certs.splice(idx, 1);
+            e.target.closest('.json-item').remove();
+          }
+        });
+
+        document.getElementById('add-edu').onclick = () => {
+          const deg = document.getElementById('ne-deg').value.trim();
+          const inst = document.getElementById('ne-inst').value.trim();
+          if (!deg || !inst) return toast('Degree and institution required', 'error');
+          const entry = { degree: deg, institution: inst, year: document.getElementById('ne-yr').value.trim(), score: document.getElementById('ne-sc').value.trim() };
+          edu.push(entry);
+          document.getElementById('edu-list').innerHTML += `<div class="json-item"><div class="json-item-title">${entry.degree} — ${entry.institution}</div><div class="json-item-sub">${entry.year} ${entry.score?'· '+entry.score:''}</div><button class="json-item-remove" data-type="edu" data-i="${edu.length-1}">✕</button></div>`;
+          ['ne-deg','ne-inst','ne-yr','ne-sc'].forEach(id => document.getElementById(id).value = '');
+        };
+
+        document.getElementById('add-proj').onclick = () => {
+          const name = document.getElementById('np-name').value.trim();
+          if (!name) return toast('Project name required', 'error');
+          const entry = { name, description: document.getElementById('np-desc').value.trim(), link: document.getElementById('np-link').value.trim() };
+          proj.push(entry);
+          document.getElementById('proj-list').innerHTML += `<div class="json-item"><div class="json-item-title">${entry.name}</div><div class="json-item-sub">${entry.description}</div><button class="json-item-remove" data-type="proj" data-i="${proj.length-1}">✕</button></div>`;
+          ['np-name','np-desc','np-link'].forEach(id => document.getElementById(id).value = '');
+        };
+
+        document.getElementById('add-cert').onclick = () => {
+          const name = document.getElementById('nc-name').value.trim();
+          if (!name) return toast('Certification name required', 'error');
+          const entry = { name, issuer: document.getElementById('nc-iss').value.trim(), year: document.getElementById('nc-yr').value.trim() };
+          certs.push(entry);
+          document.getElementById('cert-list').innerHTML += `<div class="json-item"><div class="json-item-title">${entry.name}</div><div class="json-item-sub">${entry.issuer} ${entry.year?'· '+entry.year:''}</div><button class="json-item-remove" data-type="cert" data-i="${certs.length-1}">✕</button></div>`;
+          ['nc-name','nc-iss','nc-yr'].forEach(id => document.getElementById(id).value = '');
+        };
+
+        document.getElementById('ep-save').onclick = async () => {
+          const body = {
+            enrollment_number: document.getElementById('e-enroll').value.trim() || null,
+            roll_number: document.getElementById('e-roll').value.trim() || null,
+            branch: document.getElementById('e-branch').value.trim() || null,
+            gpa: document.getElementById('e-gpa').value ? parseFloat(document.getElementById('e-gpa').value) : null,
+            phone: document.getElementById('e-phone').value.trim() || null,
+            dob: document.getElementById('e-dob').value || null,
+            address: document.getElementById('e-addr').value.trim() || null,
+            skills: document.getElementById('e-skills').value.trim() || null,
+            resume_summary: document.getElementById('e-summary').value.trim() || null,
+            linkedin_url: document.getElementById('e-li').value.trim() || null,
+            github_url: document.getElementById('e-gh').value.trim() || null,
+            portfolio_url: document.getElementById('e-port').value.trim() || null,
+            resume_url: document.getElementById('e-res').value.trim() || null,
+            education: edu, projects: proj, certifications: certs
+          };
+          try {
+            const updated = await api('/students/profile', { method: 'PUT', body: JSON.stringify(body) });
+            Object.assign(p, updated);
+            toast('Profile updated!', 'success');
+            closeModal();
+            renderProfile();
+          } catch(e) { toast(e.message, 'error'); }
+        };
+      }
+
+      renderProfile();
+    } catch (e) {
+      pb().innerHTML = `<div class="empty-state"><div class="empty-icon">👤</div><h3>Profile not found</h3><p>${e.message}</p></div>`;
+    }
+  })();
   </script>
+  <style>.responsive-grid{grid-template-columns:1fr 1fr}@media(max-width:768px){.responsive-grid{grid-template-columns:1fr!important}}</style>
 </body>
 </html>

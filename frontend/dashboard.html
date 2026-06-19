@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard — PMS</title>
+  <title>Dashboard — PMS 3.0</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,104 +12,98 @@
   <div id="app"></div>
   <script src="common.js"></script>
   <script>
-    (async () => {
-      if (!initPage('dashboard', 'Dashboard', 'Overview of placement activities')) return;
-      const user = auth.getUser();
-      const role = user.role;
-      try {
-        // Fetch data based on role
-        let statsHTML = '';
-        if (role === 'admin' || role === 'trainer') {
-          const a = await api('/analytics');
-          statsHTML = `
+  (async () => {
+    if (!initPage('dashboard', 'Dashboard', 'Welcome to your placement portal')) return;
+    const user = auth.getUser();
+    const r = user.role;
+    try {
+      if (r === 'admin' || r === 'trainer') {
+        const [a, notifs] = await Promise.all([
+          api('/analytics'),
+          api('/notifications').catch(() => [])
+        ]);
+        pb().innerHTML = `
           <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-icon" style="background:rgba(124,58,237,0.15);color:var(--accent-purple)">👥</div>
-              <div class="stat-value">${a.total_students}</div>
-              <div class="stat-label">Total Students</div>
+            <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6">👥</div><div class="stat-value">${a.total_students}</div><div class="stat-label">Total Students</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#f0fdf4;color:#10b981">✅</div><div class="stat-value">${a.placed_students}</div><div class="stat-label">Placed</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6">📊</div><div class="stat-value">${a.placement_percentage.toFixed(1)}%</div><div class="stat-label">Placement Rate</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#fef3c7;color:#f59e0b">🎓</div><div class="stat-value">${a.average_gpa.toFixed(2)}</div><div class="stat-label">Avg GPA</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#ede9fe;color:#8b5cf6">🏢</div><div class="stat-value">${a.total_drives}</div><div class="stat-label">Drives</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#f0fdf4;color:#10b981">📦</div><div class="stat-value">${a.total_batches}</div><div class="stat-label">Batches</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px" class="responsive-grid">
+            <div class="card">
+              <div class="card-header"><h3>Quick Actions</h3></div>
+              <div class="btn-group" style="flex-direction:column;align-items:flex-start">
+                <a href="students.html" class="btn btn-secondary w-full" style="justify-content:flex-start">${IC.users} View Students</a>
+                <a href="batches.html" class="btn btn-secondary w-full" style="justify-content:flex-start">${IC.batch} Manage Batches</a>
+                <a href="notifications.html" class="btn btn-secondary w-full" style="justify-content:flex-start">${IC.bell} Send Notification</a>
+                <a href="attendance.html" class="btn btn-secondary w-full" style="justify-content:flex-start">${IC.cal} Record Attendance</a>
+                <a href="analytics.html" class="btn btn-secondary w-full" style="justify-content:flex-start">${IC.chart} View Analytics</a>
+              </div>
             </div>
-            <div class="stat-card">
-              <div class="stat-icon" style="background:rgba(16,185,129,0.15);color:var(--accent-green)">✅</div>
-              <div class="stat-value">${a.placed_students}</div>
-              <div class="stat-label">Placed Students</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon" style="background:rgba(6,182,212,0.15);color:var(--accent-cyan)">📊</div>
-              <div class="stat-value">${a.placement_percentage.toFixed(1)}%</div>
-              <div class="stat-label">Placement Rate</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon" style="background:rgba(59,130,246,0.15);color:var(--accent-blue)">📚</div>
-              <div class="stat-value">${a.average_gpa.toFixed(2)}</div>
-              <div class="stat-label">Average GPA</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon" style="background:rgba(236,72,153,0.15);color:var(--accent-pink)">🏢</div>
-              <div class="stat-value">${a.total_drives}</div>
-              <div class="stat-label">Placement Drives</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon" style="background:rgba(245,158,11,0.15);color:var(--accent-orange)">🎓</div>
-              <div class="stat-value">${a.total_colleges}</div>
-              <div class="stat-label">Colleges</div>
+            <div class="card">
+              <div class="card-header"><h3>Recent Notifications</h3><a href="notifications.html" class="btn btn-sm btn-secondary">View All</a></div>
+              <div class="notif-list">
+                ${notifs.slice(0,4).map(n => `
+                  <div class="notif-card">
+                    <div class="notif-body">
+                      <div class="notif-title">${n.title}</div>
+                      <div class="notif-msg">${n.message.substring(0,80)}${n.message.length>80?'…':''}</div>
+                      <div class="notif-meta">${timeAgo(n.created_at)} · ${n.target_type}</div>
+                    </div>
+                  </div>`).join('') || '<p class="text-muted text-sm">No notifications yet</p>'}
+              </div>
             </div>
           </div>`;
-        }
-
-        // Quick actions based on role
-        let actions = '<div class="card mt-2"><div class="card-header"><h3>Quick Actions</h3></div><div class="btn-group" style="flex-wrap:wrap">';
-        if (role === 'student') {
-          actions += `<a href="profile.html" class="btn btn-secondary">👤 My Profile</a>
-            <a href="drives.html" class="btn btn-secondary">🏢 Browse Drives</a>
-            <a href="attendance.html" class="btn btn-secondary">📅 My Attendance</a>
-            <a href="assessments.html" class="btn btn-secondary">📝 My Scores</a>`;
-        } else if (role === 'trainer') {
-          actions += `<a href="attendance.html" class="btn btn-secondary">📅 Record Attendance</a>
-            <a href="assessments.html" class="btn btn-secondary">📝 Manage Assessments</a>
-            <a href="students.html" class="btn btn-secondary">👥 View Students</a>
-            <a href="analytics.html" class="btn btn-secondary">📊 Analytics</a>`;
-        } else {
-          actions += `<a href="drives.html" class="btn btn-secondary">🏢 Manage Drives</a>
-            <a href="colleges.html" class="btn btn-secondary">🎓 Manage Colleges</a>
-            <a href="students.html" class="btn btn-secondary">👥 View Students</a>
-            <a href="analytics.html" class="btn btn-secondary">📊 Analytics</a>`;
-        }
-        actions += '</div></div>';
-
-        // Student-specific: show own profile summary
-        let profileCard = '';
-        if (role === 'student') {
-          try {
-            const p = await api('/students/profile');
-            statsHTML = `<div class="stats-grid">
-              <div class="stat-card"><div class="stat-icon" style="background:rgba(124,58,237,0.15);color:var(--accent-purple)">📧</div><div class="stat-value text-sm">${p.email}</div><div class="stat-label">Email</div></div>
-              <div class="stat-card"><div class="stat-icon" style="background:rgba(16,185,129,0.15);color:var(--accent-green)">📊</div><div class="stat-value">${p.gpa || 'N/A'}</div><div class="stat-label">GPA</div></div>
-              <div class="stat-card"><div class="stat-icon" style="background:rgba(6,182,212,0.15);color:var(--accent-cyan)">🏫</div><div class="stat-value text-sm">${p.college_name || 'Not set'}</div><div class="stat-label">College</div></div>
-              <div class="stat-card"><div class="stat-icon" style="background:rgba(245,158,11,0.15);color:var(--accent-orange)">📋</div><div class="stat-value">${statusBadge(p.status)}</div><div class="stat-label">Status</div></div>
-            </div>`;
-          } catch(e) {
-            statsHTML = '<div class="card mb-3" style="border-color:rgba(245,158,11,0.3)"><p style="color:var(--accent-orange)">⚠️ Complete your profile to get started. <a href="profile.html" style="color:var(--accent-purple)">Go to Profile →</a></p></div>';
-          }
-        }
-
-        // Recent drives for everyone
-        let drivesCard = '';
-        try {
-          const drives = await api('/drives');
-          if (drives.length > 0) {
-            const recent = drives.slice(0, 3);
-            drivesCard = `<div class="card mt-2"><div class="card-header"><h3>Recent Placement Drives</h3><a href="drives.html" class="btn btn-sm btn-secondary">View All</a></div>
-            <div class="table-wrapper"><table><thead><tr><th>Company</th><th>Role</th><th>Package</th><th>Status</th><th>Date</th></tr></thead><tbody>
-            ${recent.map(d => `<tr><td><strong>${d.company_name}</strong></td><td>${d.job_role}</td><td>₹${d.package_lpa} LPA</td><td>${statusBadge(d.status)}</td><td>${d.date}</td></tr>`).join('')}
-            </tbody></table></div></div>`;
-          }
-        } catch(e) {}
-
-        pb().innerHTML = statsHTML + actions + drivesCard;
-      } catch (e) {
-        pb().innerHTML = `<div class="empty-state"><h3>Error loading dashboard</h3><p>${e.message}</p></div>`;
+      } else {
+        // Student dashboard
+        const [profile, notifs, classes, drives] = await Promise.all([
+          api('/students/profile').catch(() => null),
+          api('/notifications/my').catch(() => []),
+          api('/classes').catch(() => []),
+          api('/drives').catch(() => [])
+        ]);
+        const unread = notifs.filter(n => !n.is_read).length;
+        pb().innerHTML = `
+          ${!profile ? `<div class="card mb-3" style="border-color:#fbbf24;background:#fffbeb"><p style="color:#b45309">⚠️ Complete your profile to get started. <a href="profile.html" style="color:var(--blue)">Go to Profile →</a></p></div>` : ''}
+          <div class="stats-grid">
+            <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6">📊</div><div class="stat-value">${profile?.gpa || '—'}</div><div class="stat-label">Your GPA</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:${profile?.status==='placed'?'#f0fdf4':'#fef3c7'};color:${profile?.status==='placed'?'#10b981':'#f59e0b'}">${profile?.status==='placed'?'✅':'⏳'}</div><div class="stat-value text-sm">${profile?.status || 'unplaced'}</div><div class="stat-label">Status</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6">🔔</div><div class="stat-value">${unread}</div><div class="stat-label">Unread Notifications</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#ede9fe;color:#8b5cf6">📅</div><div class="stat-value">${classes.length}</div><div class="stat-label">Upcoming Classes</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px" class="responsive-grid">
+            <div class="card">
+              <div class="card-header"><h3>Notifications</h3><a href="notifications.html" class="btn btn-sm btn-secondary">View All</a></div>
+              <div class="notif-list">
+                ${notifs.slice(0,4).map(n => `
+                  <div class="notif-card ${!n.is_read?'unread':''}">
+                    ${!n.is_read ? '<div class="notif-dot"></div>' : ''}
+                    <div class="notif-body">
+                      <div class="notif-title">${n.title}</div>
+                      <div class="notif-msg">${n.message.substring(0,70)}${n.message.length>70?'…':''}</div>
+                      <div class="notif-meta">${timeAgo(n.created_at)}</div>
+                    </div>
+                  </div>`).join('') || '<p class="text-muted text-sm">No notifications</p>'}
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header"><h3>Upcoming Classes</h3><a href="classes.html" class="btn btn-sm btn-secondary">View All</a></div>
+              ${classes.slice(0,4).map(c => `
+                <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+                  <div style="font-weight:600;font-size:0.88rem">${c.title}</div>
+                  <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">${c.batch_name} · ${fmtDate(c.class_date)} ${c.start_time||''}</div>
+                  ${c.location ? `<div style="font-size:0.75rem;color:var(--text-muted)">${c.location}</div>` : ''}
+                </div>`).join('') || '<p class="text-muted text-sm">No classes scheduled</p>'}
+            </div>
+          </div>`;
       }
-    })();
+    } catch (e) {
+      pb().innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Error loading dashboard</h3><p>${e.message}</p></div>`;
+    }
+  })();
   </script>
+  <style>.responsive-grid{grid-template-columns:1fr 1fr}@media(max-width:768px){.responsive-grid{grid-template-columns:1fr!important}}</style>
 </body>
 </html>
