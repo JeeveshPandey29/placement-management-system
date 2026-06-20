@@ -82,9 +82,26 @@
       btn.disabled = true; btn.textContent = 'Signing in…';
       try {
         const data = await api('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+        // Save token first
         localStorage.setItem('pms_token', data.token);
-        const user = await api('/me');
-        auth.save(data.token, { id: user.id, email: user.email, role: user.role, full_name: user.full_name, must_change_password: data.must_change_password });
+        // Fetch full user info — if this fails clear and show error
+        let user;
+        try {
+          user = await api('/me');
+        } catch(e) {
+          // /me failed — clear stale token and report
+          auth.clear();
+          toast('Login error: ' + e.message, 'error');
+          btn.disabled = false; btn.textContent = 'Sign In';
+          return;
+        }
+        auth.save(data.token, {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          full_name: user.full_name || data.full_name || '',
+          must_change_password: user.must_change_password ?? data.must_change_password ?? false
+        });
         if (data.must_change_password) { location.href = 'set-password.html'; return; }
         location.href = 'dashboard.html';
       } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Sign In'; }

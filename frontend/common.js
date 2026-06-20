@@ -23,7 +23,15 @@ async function api(path, opts = {}) {
   const t = auth.getToken();
   if (t) h['Authorization'] = 'Bearer ' + t;
   const r = await fetch(API + path, { ...opts, headers: { ...h, ...opts.headers } });
-  if (r.status === 401) { auth.clear(); location.href = 'login.html'; throw new Error('Session expired'); }
+  if (r.status === 401) {
+    // Only redirect to login if we're NOT already on the login page
+    if (!window.location.pathname.includes('login.html') && 
+        !window.location.pathname.includes('set-password.html')) {
+      auth.clear();
+      location.href = 'login.html';
+    }
+    throw new Error('Session expired');
+  }
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail || d));
   return d;
