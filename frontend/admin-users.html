@@ -109,7 +109,7 @@
         const btn = document.getElementById('bulk-save');
         btn.disabled = true; btn.textContent = 'Uploading…';
         try {
-          const r = await fetch(API + '/admin/users/bulk', {
+          const r = await fetch(API + '/admin/bulk-upload', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + auth.getToken() },
             body: formData

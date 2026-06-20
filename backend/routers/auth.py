@@ -169,7 +169,7 @@ def admin_create_user(payload: CreateUserIn, admin: dict = Depends(require_admin
 
 
 # ── Admin: Bulk upload via CSV ─────────────────────────────────────────────────
-@router.post("/admin/users/bulk", tags=["Admin"])
+@router.post("/admin/bulk-upload", tags=["Admin"])
 async def admin_bulk_upload(
     file: UploadFile = File(...),
     admin: dict = Depends(require_admin)
