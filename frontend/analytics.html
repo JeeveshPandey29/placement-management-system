@@ -24,7 +24,7 @@
           <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6">${IC.chart}</div><div class="stat-value">${a.placement_percentage.toFixed(1)}%</div><div class="stat-label">Placement Rate</div></div>
           <div class="stat-card"><div class="stat-icon" style="background:#fef3c7;color:#f59e0b">${IC.doc}</div><div class="stat-value">${a.average_gpa.toFixed(2)}</div><div class="stat-label">Avg GPA</div></div>
           <div class="stat-card"><div class="stat-icon" style="background:#ede9fe;color:#8b5cf6">${IC.brief}</div><div class="stat-value">${a.total_drives}</div><div class="stat-label">Drives</div></div>
-          <div class="stat-card"><div class="stat-icon" style="background:#f0fdf4;color:#10b981">${IC.batch}</div><div class="stat-value">${a.total_batches}</div><div class="stat-label">Batches</div></div>
+          <div class="stat-card"><div class="stat-icon" style="background:#f0fdf4;color:#10b981">${IC.batch}</div><div class="stat-value">${a.total_batches ?? 0}</div><div class="stat-label">Batches</div></div>
         </div>
         <div class="charts-grid">
           <div class="chart-card"><h3>Placement Status</h3><canvas id="c1" height="240"></canvas></div>
