@@ -26,9 +26,9 @@
         const avg = scores.length ? (scores.reduce((a,s)=>a+parseFloat(s.score),0)/scores.length).toFixed(1) : '—';
         pb().innerHTML = `
           <div class="stats-grid">
-            <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6">📝</div><div class="stat-value">${assessments.length}</div><div class="stat-label">Assessments</div></div>
-            <div class="stat-card"><div class="stat-icon" style="background:#f0fdf4;color:#10b981">✅</div><div class="stat-value">${scores.length}</div><div class="stat-label">Scored</div></div>
-            <div class="stat-card"><div class="stat-icon" style="background:#fef3c7;color:#f59e0b">📊</div><div class="stat-value">${avg}</div><div class="stat-label">Avg Score</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6">${IC.doc}</div><div class="stat-value">${assessments.length}</div><div class="stat-label">Assessments</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#f0fdf4;color:#10b981">${IC.doc}</div><div class="stat-value">${scores.length}</div><div class="stat-label">Scored</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#fef3c7;color:#f59e0b">${IC.chart}</div><div class="stat-value">${avg}</div><div class="stat-label">Avg Score</div></div>
           </div>
           <div class="table-wrapper"><table><thead><tr><th>Title</th><th>Date</th><th>Max</th><th>Your Score</th><th>Feedback</th></tr></thead><tbody>
           ${assessments.length===0?'<tr><td colspan="5" class="text-center text-muted" style="padding:30px">No assessments yet</td></tr>':

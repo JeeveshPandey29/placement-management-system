@@ -23,7 +23,7 @@
         <div class="grid-3">
           ${data.length === 0 ? '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🎓</div><h3>No colleges yet</h3></div>' :
           data.map(c => `<div class="batch-card">
-            <div class="batch-name">${IC.bldg} ${c.name}</div>
+            <div class="batch-name">${c.name}</div>
             <div class="batch-meta">${c.location}</div>
             ${isAdmin ? `<div class="batch-footer"><button class="btn btn-sm btn-danger del-col" data-id="${c.id}">${IC.trash} Delete</button></div>` : ''}
           </div>`).join('')}
