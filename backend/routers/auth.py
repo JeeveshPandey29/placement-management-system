@@ -1,6 +1,8 @@
 import secrets
+import csv
+import io
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from database import get_db
 from auth import hash_password, verify_password, create_token, get_current_user, require_admin
 from schemas import (
@@ -15,11 +17,12 @@ router = APIRouter()
 @router.post("/setup/admin", response_model=UserOut, status_code=status.HTTP_201_CREATED,
              tags=["Setup"])
 def setup_first_admin(payload: AdminSetupIn):
-    """Works ONLY when zero admin accounts exist. Creates the first admin."""
+    """Works ONLY when zero admin accounts exist."""
     with get_db() as cur:
         cur.execute("SELECT COUNT(*) FROM pms_users WHERE role = 'admin'")
         if cur.fetchone()[0] > 0:
-            raise HTTPException(status_code=403, detail="Admin already exists. Use admin panel to add more.")
+            raise HTTPException(status_code=403,
+                                detail="Admin already exists. Use admin panel to add more.")
         hashed = hash_password(payload.password)
         cur.execute(
             "INSERT INTO pms_users (email, password, role, full_name, must_change_password) "
@@ -90,21 +93,18 @@ def forgot_password(payload: ForgotPasswordIn):
         cur.execute("SELECT id FROM pms_users WHERE email = %s", (payload.email,))
         row = cur.fetchone()
     if not row:
-        # Don't reveal if email exists
         return {"message": "If that email exists, a reset token has been generated."}
     user_id = row[0]
     token = secrets.token_urlsafe(32)
     expires = datetime.now(timezone.utc) + timedelta(hours=2)
     with get_db() as cur:
-        # invalidate previous tokens
         cur.execute("UPDATE password_reset_tokens SET used = TRUE WHERE user_id = %s", (user_id,))
         cur.execute(
             "INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (%s, %s, %s)",
             (user_id, token, expires)
         )
-    # In production: email the token. For now return it (dev/Postman testing).
     return {"message": "Reset token generated.", "reset_token": token,
-            "note": "In production this would be emailed. Store this token securely."}
+            "note": "In production this would be emailed."}
 
 
 # ── Reset password ─────────────────────────────────────────────────────────────
@@ -125,18 +125,27 @@ def reset_password(payload: ResetPasswordIn):
         raise HTTPException(status_code=400, detail="Reset token has expired")
     hashed = hash_password(payload.new_password)
     with get_db() as cur:
-        cur.execute("UPDATE pms_users SET password = %s, must_change_password = FALSE WHERE id = %s",
-                    (hashed, user_id))
+        cur.execute(
+            "UPDATE pms_users SET password = %s, must_change_password = FALSE WHERE id = %s",
+            (hashed, user_id)
+        )
         cur.execute("UPDATE password_reset_tokens SET used = TRUE WHERE token = %s", (payload.token,))
     return {"message": "Password reset successfully. Please log in."}
 
 
-# ── Admin: Create user (student / trainer / admin) ────────────────────────────
+# ── Admin: Create single user ──────────────────────────────────────────────────
 @router.post("/admin/users", response_model=UserOut, status_code=status.HTTP_201_CREATED,
              tags=["Admin"])
 def admin_create_user(payload: CreateUserIn, admin: dict = Depends(require_admin)):
-    """Admin creates any account. Default password = first name (lowercase)."""
-    default_pw = (payload.full_name.split()[0]).lower()
+    """
+    Default password = enrollment_number for students, email prefix for trainers/admins.
+    must_change_password = TRUE so they set their own on first login.
+    """
+    if payload.role == "student" and payload.enrollment_number:
+        default_pw = payload.enrollment_number  # enrollment no as default password
+    else:
+        default_pw = payload.email.split("@")[0]  # email prefix for trainers/admins
+
     hashed = hash_password(default_pw)
     with get_db() as cur:
         cur.execute("SELECT id FROM pms_users WHERE email = %s", (payload.email,))
@@ -150,12 +159,84 @@ def admin_create_user(payload: CreateUserIn, admin: dict = Depends(require_admin
         uid = cur.fetchone()[0]
         if payload.role == "student":
             cur.execute(
-                "INSERT INTO student_profiles (user_id, college_id, enrollment_number, branch, status) "
+                "INSERT INTO student_profiles "
+                "(user_id, college_id, enrollment_number, branch, status) "
                 "VALUES (%s, 1, %s, %s, 'unplaced')",
                 (uid, payload.enrollment_number, payload.branch)
             )
     return {"id": uid, "email": payload.email, "role": payload.role,
             "full_name": payload.full_name, "must_change_password": True}
+
+
+# ── Admin: Bulk upload via CSV ─────────────────────────────────────────────────
+@router.post("/admin/users/bulk", tags=["Admin"])
+async def admin_bulk_upload(
+    file: UploadFile = File(...),
+    admin: dict = Depends(require_admin)
+):
+    """
+    CSV columns: full_name, email, role, enrollment_number (optional), branch (optional)
+    Default password = enrollment_number for students, email prefix for others.
+    """
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are accepted")
+
+    content = await file.read()
+    reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+
+    created, skipped, errors = [], [], []
+
+    with get_db() as cur:
+        for i, row in enumerate(reader, start=2):  # row 2 = first data row
+            try:
+                full_name = row.get("full_name", "").strip()
+                email = row.get("email", "").strip().lower()
+                role = row.get("role", "student").strip().lower()
+                enrollment_number = row.get("enrollment_number", "").strip() or None
+                branch = row.get("branch", "").strip() or None
+
+                if not full_name or not email:
+                    errors.append(f"Row {i}: full_name and email are required")
+                    continue
+                if role not in ("admin", "trainer", "student"):
+                    errors.append(f"Row {i}: invalid role '{role}'")
+                    continue
+
+                # Check duplicate
+                cur.execute("SELECT id FROM pms_users WHERE email = %s", (email,))
+                if cur.fetchone():
+                    skipped.append(email)
+                    continue
+
+                default_pw = enrollment_number if (role == "student" and enrollment_number) \
+                    else email.split("@")[0]
+                hashed = hash_password(default_pw)
+
+                cur.execute(
+                    "INSERT INTO pms_users (email, password, role, full_name, must_change_password) "
+                    "VALUES (%s, %s, %s, %s, TRUE) RETURNING id",
+                    (email, hashed, role, full_name)
+                )
+                uid = cur.fetchone()[0]
+
+                if role == "student":
+                    cur.execute(
+                        "INSERT INTO student_profiles "
+                        "(user_id, college_id, enrollment_number, branch, status) "
+                        "VALUES (%s, 1, %s, %s, 'unplaced')",
+                        (uid, enrollment_number, branch)
+                    )
+                created.append({"email": email, "role": role, "default_password": default_pw})
+
+            except Exception as e:
+                errors.append(f"Row {i}: {str(e)}")
+
+    return {
+        "created": len(created),
+        "skipped_duplicates": len(skipped),
+        "errors": errors,
+        "users": created
+    }
 
 
 # ── Admin: List all users ──────────────────────────────────────────────────────
@@ -165,12 +246,12 @@ def admin_list_users(role: str = None, admin: dict = Depends(require_admin)):
         if role:
             cur.execute(
                 "SELECT id, email, role, full_name, must_change_password, created_at "
-                "FROM pms_users WHERE role = %s ORDER BY created_at DESC", (role,)
+                "FROM pms_users WHERE role = %s ORDER BY full_name", (role,)
             )
         else:
             cur.execute(
                 "SELECT id, email, role, full_name, must_change_password, created_at "
-                "FROM pms_users ORDER BY created_at DESC"
+                "FROM pms_users ORDER BY role, full_name"
             )
         rows = cur.fetchall()
     return [{"id": r[0], "email": r[1], "role": r[2], "full_name": r[3],

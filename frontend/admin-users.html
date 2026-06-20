@@ -16,7 +16,7 @@
     const u = auth.getUser();
     if (!u || u.role !== 'admin') { location.href = 'dashboard.html'; return; }
     if (!initPage('admin-users', 'User Management', 'Create and manage all user accounts',
-      `<button class="btn btn-primary" id="add-user-btn">${IC.plus} Add User</button>`)) return;
+      `<button class="btn btn-secondary" id="bulk-btn">⬆ Bulk CSV Upload</button><button class="btn btn-primary" id="add-user-btn">${IC.plus} Add User</button>`)) return;
 
     async function loadUsers() {
       try {
@@ -77,6 +77,60 @@
         };
       });
     }
+
+    document.getElementById('bulk-btn').onclick = () => {
+      openModal(`<h2>Bulk Upload Students / Trainers</h2>
+        <div class="card mb-2" style="background:#eff6ff;border-color:#bfdbfe;padding:12px">
+          <p class="text-sm" style="color:#1d4ed8;font-weight:600">CSV Format (first row = headers):</p>
+          <code style="font-size:0.75rem;color:#1e40af;display:block;margin-top:4px">full_name,email,role,enrollment_number,branch</code>
+          <p class="text-sm mt-1" style="color:#3b82f6">• Student default password = enrollment_number</p>
+          <p class="text-sm" style="color:#3b82f6">• Trainer default password = email prefix (before @)</p>
+        </div>
+        <div class="form-group">
+          <label>Download Template</label>
+          <a href="data:text/csv;charset=utf-8,full_name,email,role,enrollment_number,branch%0AKrish Gupta,krish@student.com,student,CSE2024001,Computer Science%0AVijay Trainer,vijay@pms.com,trainer,," 
+             download="pms_upload_template.csv" class="btn btn-secondary btn-sm">⬇ Download CSV Template</a>
+        </div>
+        <div class="form-group">
+          <label>Upload CSV File</label>
+          <input type="file" class="form-control" id="csv-file" accept=".csv">
+        </div>
+        <div id="bulk-result" class="hidden"></div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" id="bulk-save">Upload</button>
+        </div>`);
+
+      document.getElementById('bulk-save').onclick = async () => {
+        const fileInput = document.getElementById('csv-file');
+        if (!fileInput.files[0]) return toast('Select a CSV file', 'error');
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        const btn = document.getElementById('bulk-save');
+        btn.disabled = true; btn.textContent = 'Uploading…';
+        try {
+          const r = await fetch(API + '/admin/users/bulk', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + auth.getToken() },
+            body: formData
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.detail || 'Upload failed');
+          const res = document.getElementById('bulk-result');
+          res.classList.remove('hidden');
+          res.innerHTML = `<div class="card" style="background:#f0fdf4;border-color:#bbf7d0;padding:12px">
+            <p style="color:#15803d;font-weight:600">✅ Created: ${d.created} &nbsp;|&nbsp; Skipped: ${d.skipped_duplicates}</p>
+            ${d.errors.length ? `<p class="text-sm mt-1" style="color:var(--red)">${d.errors.join('<br>')}</p>` : ''}
+            <div class="mt-2" style="max-height:150px;overflow-y:auto">
+              ${d.users.map(u => `<div class="text-sm" style="padding:2px 0">${u.full_name||u.email} — pw: <code>${u.default_password}</code></div>`).join('')}
+            </div>
+          </div>`;
+          toast(`${d.created} user(s) created!`, 'success');
+          loadUsers();
+        } catch(e) { toast(e.message, 'error'); }
+        btn.disabled = false; btn.textContent = 'Upload';
+      };
+    };
 
     document.getElementById('add-user-btn').onclick = () => {
       openModal(`<h2>Add New User</h2>

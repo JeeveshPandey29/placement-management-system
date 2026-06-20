@@ -1,308 +1,530 @@
-# PMS1.0 API Test Cases for Postman
+# PMS 3.0 — Postman Test Cases
 
-Base URL: `http://127.0.0.1:8000`
+**Base URL:** `https://placement-management-system-u48x.onrender.com`
 
-## Common Notes
-- Use `Content-Type: application/json` for all JSON requests.
-- For protected endpoints, add header:
-  - `Authorization: Bearer <token>`
-- Use `/login` response token for subsequent requests.
-- `POST /register` returns user `id`, `email`, and `role`.
-- Use separate accounts for each role: admin, trainer, student.
+> Set `{{token}}` as a Postman variable after login. Add header `Authorization: Bearer {{token}}` to all authenticated requests.
 
 ---
 
-## Authentication Tests (All Roles)
+## 1. SETUP
 
-### 1. Register Admin
-- Method: `POST`
-- URL: `/register`
-- Body:
-```json
-{
-  "email": "admin@example.com",
-  "password": "Admin123!",
-  "role": "admin"
-}
+### 1.1 Create First Admin (one-time only)
 ```
-- Expected: `201 Created`, user object with `role: "admin"`
+POST /setup/admin
+Body: {
+  "email": "jeevesh.pandey@pms.com",
+  "password": "Admin@123",
+  "full_name": "Jeevesh Pandey"
+}
+Expected: 201 — { "id": 1, "email": "...", "role": "admin" }
+```
 
-### 2. Register Trainer
-- Method: `POST`
-- URL: `/register`
-- Body:
-```json
-{
-  "email": "trainer@example.com",
-  "password": "Trainer123!",
+---
+
+## 2. AUTHENTICATION
+
+### 2.1 Login
+```
+POST /login
+Body: { "email": "jeevesh.pandey@pms.com", "password": "Admin@123" }
+Expected: 200 — { "token": "...", "token_type": "Bearer", "must_change_password": false }
+```
+
+### 2.2 Get Current User
+```
+GET /me
+Auth: Bearer {{token}}
+Expected: 200 — { "id": 1, "email": "...", "role": "admin" }
+```
+
+### 2.3 Set Password (first login)
+```
+POST /set-password
+Auth: Bearer {{token}}
+Body: { "new_password": "MyNewPass@123" }
+Expected: 200 — { "message": "Password updated successfully" }
+```
+
+### 2.4 Change Password
+```
+POST /change-password
+Auth: Bearer {{token}}
+Body: { "old_password": "Admin@123", "new_password": "Admin@456" }
+Expected: 200 — { "message": "Password changed successfully" }
+```
+
+### 2.5 Forgot Password
+```
+POST /forgot-password
+Body: { "email": "jeevesh.pandey@pms.com" }
+Expected: 200 — { "reset_token": "abc123..." }
+```
+
+### 2.6 Reset Password
+```
+POST /reset-password
+Body: { "token": "<from 2.5>", "new_password": "Admin@123" }
+Expected: 200 — { "message": "Password reset successfully. Please log in." }
+```
+
+---
+
+## 3. ADMIN — USER MANAGEMENT
+
+### 3.1 Create Trainer
+```
+POST /admin/users
+Auth: Bearer {{token}}
+Body: {
+  "email": "vijay.bhilare@pms.com",
+  "full_name": "Vijay Bhilare",
   "role": "trainer"
 }
+Expected: 201
+Default password = "vijay.bhilare" (email prefix)
 ```
 
-### 3. Register Student
-- Method: `POST`
-- URL: `/register`
-- Body:
-```json
-{
-  "email": "student@example.com",
-  "password": "Student123!",
-  "role": "student"
+### 3.2 Create Student
+```
+POST /admin/users
+Auth: Bearer {{token}}
+Body: {
+  "email": "krish.gupta@student.com",
+  "full_name": "Krish Gupta",
+  "role": "student",
+  "enrollment_number": "CSE2024001",
+  "branch": "Computer Science"
 }
+Expected: 201
+Default password = "CSE2024001" (enrollment number)
 ```
 
-### 4. Login User
-- Method: `POST`
-- URL: `/login`
-- Body:
-```json
-{
-  "email": "student@example.com",
-  "password": "Student123!"
-}
+### 3.3 Bulk Upload via CSV
 ```
-- Expected: JSON with `token` and `token_type`
+POST /admin/users/bulk
+Auth: Bearer {{token}}
+Body: form-data, key="file", type=File
+CSV format:
+  full_name,email,role,enrollment_number,branch
+  Aarav Sharma,aarav.sharma@student.com,student,CSE2024002,Computer Science
+  Atharva Jagtap,atharva.jagtap@pms.com,trainer,,
+Expected: 200 — { "created": 2, "skipped_duplicates": 0, "errors": [] }
+```
 
-### 5. Get Current User
-- Method: `GET`
-- URL: `/me`
-- Header: `Authorization: Bearer <token>`
-- Expected: current user object
+### 3.4 List All Users
+```
+GET /admin/users
+Auth: Bearer {{token}}
+Expected: 200 — array of users
+
+GET /admin/users?role=student
+Expected: 200 — only students
+```
+
+### 3.5 Delete User
+```
+DELETE /admin/users/5
+Auth: Bearer {{token}}
+Expected: 200 — { "message": "User deleted" }
+```
 
 ---
 
-## Admin Test Cases
+## 4. COLLEGES
 
-Admin can perform all admin tasks and can also access trainer-level routes because `require_trainer` permits admin users.
-
-### A1. Create Placement Drive
-- Method: `POST`
-- URL: `/drives`
-- Header: `Authorization: Bearer <admin-token>`
-- Body:
-```json
-{
-  "company_name": "TestCorp",
-  "job_role": "Intern",
-  "package_lpa": 5.5,
-  "eligibility_cgpa": 7.0,
-  "date": "2026-08-01",
-  "status": "active"
-}
+### 4.1 List Colleges
+```
+GET /colleges
+Auth: Bearer {{token}}
+Expected: 200 — [{ "id": 1, "name": "MITADT UNIVERSITY", "location": "Pune" }]
 ```
 
-### A2. List All Placement Drives
-- Method: `GET`
-- URL: `/drives`
-- Header: `Authorization: Bearer <admin-token>`
+### 4.2 Add College
+```
+POST /colleges
+Auth: Bearer {{token}}
+Body: { "name": "VIT Pune", "location": "Pune" }
+Expected: 201
+```
 
-### A3. View Drive Applications
-- Method: `GET`
-- URL: `/drives/{drive_id}/applications`
-- Header: `Authorization: Bearer <admin-token>`
-
-### A4. View Analytics
-- Method: `GET`
-- URL: `/analytics`
-- Header: `Authorization: Bearer <admin-token>`
-
-### A5. (Optional) Use Trainer-level Routes
-- Admin can also test trainer routes such as `/attendance`, `/assessments`, `/drives/applications/{id}/status`, and `/drives/applications/{id}/feedback`.
+### 4.3 Delete College
+```
+DELETE /colleges/2
+Auth: Bearer {{token}}
+Expected: 200
+```
 
 ---
 
-## Trainer Test Cases
+## 5. BATCHES
 
-Trainer has permission to manage attendance, assessments, application workflows, and feedback.
-
-### T1. Record Attendance
-- Method: `POST`
-- URL: `/attendance`
-- Header: `Authorization: Bearer <trainer-token>`
-- Body:
-```json
-{
-  "student_id": 3,
-  "date": "2026-06-17",
-  "status": "present",
-  "session_name": "Intro Session"
-}
+### 5.1 Create Batch
+```
+POST /batches
+Auth: Bearer {{token}}
+Body: { "name": "SD1", "branch": "Software Development", "trainer_id": 2 }
+Expected: 201
 ```
 
-### T2. List Attendance Records
-- Method: `GET`
-- URL: `/attendance`
-- Header: `Authorization: Bearer <trainer-token>`
-- Optional Query: `student_id=3`
-
-### T3. Create Assessment
-- Method: `POST`
-- URL: `/assessments`
-- Header: `Authorization: Bearer <trainer-token>`
-- Body:
-```json
-{
-  "title": "Midterm",
-  "description": "Midterm Assessment",
-  "max_score": 100,
-  "date": "2026-07-01"
-}
+### 5.2 List Batches
+```
+GET /batches
+Auth: Bearer {{token}}
+Expected: 200 — array of batches with student_count
 ```
 
-### T4. Enter Student Score
-- Method: `POST`
-- URL: `/assessments/{assessment_id}/scores`
-- Header: `Authorization: Bearer <trainer-token>`
-- Body:
-```json
-{
-  "student_id": 3,
-  "score": 92,
-  "feedback": "Great work"
-}
+### 5.3 Add Students to Batch
+```
+POST /batches/1/students
+Auth: Bearer {{token}}
+Body: { "student_ids": [3, 4, 5] }
+Expected: 200 — { "message": "3 student(s) added to batch" }
 ```
 
-### T5. List Assessment Scores
-- Method: `GET`
-- URL: `/assessments/{assessment_id}/scores`
-- Header: `Authorization: Bearer <trainer-token>`
-
-### T6. View Placement Drive Applications
-- Method: `GET`
-- URL: `/drives/{drive_id}/applications`
-- Header: `Authorization: Bearer <trainer-token>`
-
-### T7. Update Application Status
-- Method: `PUT`
-- URL: `/drives/applications/{application_id}/status?status_val=selected`
-- Header: `Authorization: Bearer <trainer-token>`
-
-### T8. Leave Interview Feedback
-- Method: `POST`
-- URL: `/drives/applications/{application_id}/feedback`
-- Header: `Authorization: Bearer <trainer-token>`
-- Body:
-```json
-{
-  "round_name": "Round 1",
-  "interviewer_name": "HR",
-  "rating": 5,
-  "comments": "Excellent"
-}
+### 5.4 Get Batch Students
+```
+GET /batches/1/students
+Auth: Bearer {{token}}
+Expected: 200 — array of students
 ```
 
-### T9. View Application Feedback
-- Method: `GET`
-- URL: `/drives/applications/{application_id}/feedback`
-- Header: `Authorization: Bearer <trainer-token>`
+### 5.5 Remove Student from Batch
+```
+DELETE /batches/1/students/3
+Auth: Bearer {{token}}
+Expected: 200
+```
+
+### 5.6 Update Batch
+```
+PUT /batches/1
+Auth: Bearer {{token}}
+Body: { "trainer_id": 3 }
+Expected: 200
+```
+
+### 5.7 Delete Batch
+```
+DELETE /batches/1
+Auth: Bearer {{token}}
+Expected: 200
+```
 
 ---
 
-## Student Test Cases
+## 6. CLASSES
 
-Student can update their own profile, view attendance, assessments, apply to drives, and view feedback.
+### 6.1 Schedule Class
+```
+POST /classes
+Auth: Bearer {{token}}
+Body: {
+  "batch_id": 1,
+  "title": "Python Basics — Session 1",
+  "class_date": "2026-07-01",
+  "start_time": "10:00",
+  "end_time": "12:00",
+  "location": "Room 201"
+}
+Expected: 201
+```
 
-### S1. Update Student Profile
-- Method: `PUT`
-- URL: `/students/profile`
-- Header: `Authorization: Bearer <student-token>`
-- Body:
-```json
-{
-  "roll_number": "S101",
-  "college_id": 1,
-  "branch": "CSE",
+### 6.2 List Classes
+```
+GET /classes
+Auth: Bearer {{token}}
+Expected: 200
+
+GET /classes?batch_id=1
+Expected: 200 — only batch 1 classes
+```
+
+### 6.3 Delete Class
+```
+DELETE /classes/1
+Auth: Bearer {{token}}
+Expected: 200
+```
+
+---
+
+## 7. NOTIFICATIONS
+
+### 7.1 Send to All
+```
+POST /notifications
+Auth: Bearer {{token}}
+Body: { "title": "Welcome!", "message": "Welcome to PMS 3.0", "target_type": "all" }
+Expected: 201
+```
+
+### 7.2 Send to Batch
+```
+POST /notifications
+Auth: Bearer {{token}}
+Body: { "title": "SD1 Update", "message": "Session tomorrow at 10am", "target_type": "batch", "target_id": 1 }
+Expected: 201
+```
+
+### 7.3 Send to Student
+```
+POST /notifications
+Auth: Bearer {{token}}
+Body: { "title": "Profile Incomplete", "message": "Please complete your profile", "target_type": "student", "target_id": 3 }
+Expected: 201
+```
+
+### 7.4 Get My Notifications (student)
+```
+GET /notifications/my
+Auth: Bearer {{student_token}}
+Expected: 200 — array with is_read field
+```
+
+### 7.5 Mark as Read
+```
+PUT /notifications/1/read
+Auth: Bearer {{student_token}}
+Expected: 200
+```
+
+### 7.6 Delete Notification
+```
+DELETE /notifications/1
+Auth: Bearer {{token}}
+Expected: 200
+```
+
+---
+
+## 8. STUDENT PROFILES
+
+### 8.1 Get Own Profile (student)
+```
+GET /students/profile
+Auth: Bearer {{student_token}}
+Expected: 200 — full profile object
+```
+
+### 8.2 Update Own Profile (student)
+```
+PUT /students/profile
+Auth: Bearer {{student_token}}
+Body: {
   "gpa": 8.5,
-  "resume_url": "https://resume.example.com",
-  "skills": "Python, SQL",
-  "status": "unplaced"
+  "phone": "9876543210",
+  "skills": "Python, Java, SQL",
+  "resume_summary": "Final year CS student at MITADT",
+  "linkedin_url": "https://linkedin.com/in/krish",
+  "github_url": "https://github.com/krish",
+  "education": [{ "degree": "B.Tech CSE", "institution": "MITADT University", "year": "2022-2026", "score": "8.5 CGPA" }],
+  "projects": [{ "name": "PMS System", "description": "Placement management", "link": "https://github.com/krish/pms" }]
+}
+Expected: 200
+```
+
+### 8.3 List All Students (trainer/admin)
+```
+GET /students
+Auth: Bearer {{token}}
+Expected: 200
+
+GET /students?batch_id=1
+GET /students?status=placed
+```
+
+### 8.4 Get Student by ID (trainer/admin)
+```
+GET /students/3
+Auth: Bearer {{token}}
+Expected: 200 — full profile
+```
+
+---
+
+## 9. ATTENDANCE
+
+### 9.1 Record Attendance
+```
+POST /attendance
+Auth: Bearer {{token}}
+Body: {
+  "student_id": 3,
+  "date": "2026-06-20",
+  "status": "present",
+  "session_name": "Python Basics Session 1",
+  "batch_id": 1
+}
+Expected: 201
+```
+
+### 9.2 View All (trainer)
+```
+GET /attendance
+Auth: Bearer {{token}}
+
+GET /attendance?student_id=3
+GET /attendance?batch_id=1
+```
+
+### 9.3 My Attendance (student)
+```
+GET /attendance/my
+Auth: Bearer {{student_token}}
+Expected: 200
+```
+
+### 9.4 Delete Record
+```
+DELETE /attendance/1
+Auth: Bearer {{token}}
+Expected: 200
+```
+
+---
+
+## 10. ASSESSMENTS
+
+### 10.1 Create Assessment
+```
+POST /assessments
+Auth: Bearer {{token}}
+Body: {
+  "title": "Python Quiz 1",
+  "description": "Basics of Python",
+  "max_score": 100,
+  "date": "2026-06-25",
+  "batch_id": 1
+}
+Expected: 201
+```
+
+### 10.2 List Assessments
+```
+GET /assessments
+Auth: Bearer {{token}}
+Expected: 200
+```
+
+### 10.3 Enter Score
+```
+POST /assessments/1/scores
+Auth: Bearer {{token}}
+Body: { "student_id": 3, "score": 85, "feedback": "Good work" }
+Expected: 201
+```
+
+### 10.4 View Scores
+```
+GET /assessments/1/scores
+Auth: Bearer {{token}}
+Expected: 200
+
+GET /assessments/my/scores
+Auth: Bearer {{student_token}}
+```
+
+---
+
+## 11. PLACEMENT DRIVES
+
+### 11.1 Create Drive
+```
+POST /drives
+Auth: Bearer {{token}}
+Body: {
+  "company_name": "TCS",
+  "job_role": "Software Engineer",
+  "package_lpa": 7.5,
+  "eligibility_cgpa": 6.5,
+  "date": "2026-07-10",
+  "status": "upcoming"
+}
+Expected: 201
+```
+
+### 11.2 List Drives
+```
+GET /drives
+Auth: Bearer {{token}}
+Expected: 200
+```
+
+### 11.3 Apply for Drive (student)
+```
+POST /drives/1/apply
+Auth: Bearer {{student_token}}
+Expected: 201
+```
+
+### 11.4 My Applications (student)
+```
+GET /drives/my/applications
+Auth: Bearer {{student_token}}
+Expected: 200
+```
+
+### 11.5 View Drive Applications (trainer)
+```
+GET /drives/1/applications
+Auth: Bearer {{token}}
+Expected: 200
+```
+
+### 11.6 Update Application Status
+```
+PUT /drives/applications/1/status?status_val=shortlisted
+Auth: Bearer {{token}}
+Expected: 200
+```
+
+### 11.7 Add Interview Feedback
+```
+POST /drives/applications/1/feedback
+Auth: Bearer {{token}}
+Body: {
+  "round_name": "Technical Round 1",
+  "interviewer_name": "Amit Sharma",
+  "rating": 4,
+  "comments": "Strong DSA skills"
+}
+Expected: 201
+```
+
+### 11.8 View Interview Feedback
+```
+GET /drives/applications/1/feedback
+Auth: Bearer {{token}}
+Expected: 200
+```
+
+---
+
+## 12. ANALYTICS
+
+### 12.1 Get Summary
+```
+GET /analytics
+Auth: Bearer {{token}}
+Expected: 200 — {
+  "total_students": 10,
+  "placed_students": 2,
+  "placement_percentage": 20.0,
+  "average_gpa": 7.8,
+  "total_drives": 3,
+  "total_colleges": 1,
+  "total_batches": 2
 }
 ```
 
-### S2. Get Own Profile
-- Method: `GET`
-- URL: `/students/profile`
-- Header: `Authorization: Bearer <student-token>`
-
-### S3. View My Attendance
-- Method: `GET`
-- URL: `/attendance/my`
-- Header: `Authorization: Bearer <student-token>`
-
-### S4. List Assessments
-- Method: `GET`
-- URL: `/assessments`
-- Header: `Authorization: Bearer <student-token>`
-
-### S5. View My Assessment Scores
-- Method: `GET`
-- URL: `/assessments/my/scores`
-- Header: `Authorization: Bearer <student-token>`
-
-### S6. Apply for Placement Drive
-- Method: `POST`
-- URL: `/drives/{drive_id}/apply`
-- Header: `Authorization: Bearer <student-token>`
-
-### S7. View My Applications
-- Method: `GET`
-- URL: `/drives/my/applications`
-- Header: `Authorization: Bearer <student-token>`
-
-### S8. View Drive Application Results
-- Method: `GET`
-- URL: `/drives/{drive_id}/applications`
-- Header: `Authorization: Bearer <student-token>`
-
-### S9. View Interview Feedback
-- Method: `GET`
-- URL: `/drives/applications/{application_id}/feedback`
-- Header: `Authorization: Bearer <student-token>`
-
 ---
 
-## Endpoint Summary Table
+## PASSWORD SECURITY NOTE
 
-| Role | Endpoint | Method | Purpose |
-|------|----------|--------|---------|
-| All | `/register` | POST | Create user account |
-| All | `/login` | POST | Authenticate and receive JWT |
-| All | `/me` | GET | Get current logged-in user |
-| All | `/colleges` | GET | List colleges |
-| Student | `/students/profile` | GET | Get student own profile |
-| Student | `/students/profile` | PUT | Update student profile |
-| Trainer/Admin | `/attendance` | POST | Record attendance |
-| Trainer/Admin | `/attendance` | GET | List attendance |
-| Student | `/attendance/my` | GET | Get own attendance |
-| Trainer/Admin | `/assessments` | POST | Create assessment |
-| Any | `/assessments` | GET | List assessments |
-| Trainer/Admin | `/assessments/{id}/scores` | POST | Add/update score |
-| Trainer/Admin | `/assessments/{id}/scores` | GET | List assessment scores |
-| Student | `/assessments/my/scores` | GET | View own scores |
-| Admin | `/drives` | POST | Create placement drive |
-| Any | `/drives` | GET | List drives |
-| Student | `/drives/{id}/apply` | POST | Apply to a drive |
-| Student | `/drives/my/applications` | GET | View own applications |
-| Any | `/drives/{id}/applications` | GET | View applications for a drive |
-| Trainer/Admin | `/drives/applications/{id}/status` | PUT | Update application status |
-| Trainer/Admin | `/drives/applications/{id}/feedback` | POST | Add interview feedback |
-| Any | `/drives/applications/{id}/feedback` | GET | View feedback |
-| Trainer/Admin | `/analytics` | GET | Get placement analytics |
+| Role | Default Password | Example |
+|---|---|---|
+| Student | Enrollment Number | `CSE2024001` |
+| Trainer | Email prefix | `vijay.bhilare` |
+| Admin | Set manually at creation | — |
 
----
-
-## Postman Setup Steps
-1. Create a new Postman Collection.
-2. Create an environment with variable `baseUrl = http://127.0.0.1:8000`.
-3. Use `{{baseUrl}}` for the request URL.
-4. Add `Authorization` header only after login.
-5. Use the `token` from `POST /login` as `Bearer <token>`.
-6. Create separate admin, trainer, and student accounts.
-
----
-
-## Tips
-- If a route returns `405 Method Not Allowed`, confirm the HTTP method and route path.
-- If a route returns `401 Unauthorized`, ensure `Authorization: Bearer <token>` is set correctly.
-- For trainer endpoints, use the registered student `id` from `POST /register`.
-- For `PUT /drives/applications/{application_id}/status`, use query param `status_val=selected|shortlisted|rejected|applied`.
+All users have `must_change_password = TRUE` on first login → redirected to set-password page automatically.
