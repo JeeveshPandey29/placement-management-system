@@ -136,9 +136,11 @@ def get_batch_students(batch_id: int, current_user: dict = Depends(get_current_u
 def add_students_to_batch(batch_id: int, payload: BatchStudentIn,
                            admin: dict = Depends(require_admin)):
     with get_db() as cur:
-        cur.execute("SELECT id FROM batches WHERE id = %s", (batch_id,))
-        if not cur.fetchone():
+        cur.execute("SELECT id, name FROM batches WHERE id = %s", (batch_id,))
+        batch = cur.fetchone()
+        if not batch:
             raise HTTPException(status_code=404, detail="Batch not found")
+        batch_name = batch[1]
         added = 0
         for sid in payload.student_ids:
             try:
@@ -147,7 +149,16 @@ def add_students_to_batch(batch_id: int, payload: BatchStudentIn,
                     "ON CONFLICT DO NOTHING",
                     (batch_id, sid)
                 )
-                added += 1
+                if cur.rowcount > 0:
+                    added += 1
+                    # Auto-notify each student
+                    cur.execute(
+                        "INSERT INTO notifications (title, message, target_type, target_id, created_by) "
+                        "VALUES (%s, %s, 'student', %s, %s)",
+                        (f"You've been added to Batch {batch_name}",
+                         f"You have been assigned to training batch '{batch_name}'. Check your classes and schedule.",
+                         sid, admin["id"])
+                    )
             except Exception:
                 pass
     return {"message": f"{added} student(s) added to batch"}

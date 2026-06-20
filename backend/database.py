@@ -284,6 +284,7 @@ def init_db():
             ("package_lpa", "NUMERIC(5,2) NOT NULL DEFAULT 0"),
             ("eligibility_cgpa", "NUMERIC(4,2) NOT NULL DEFAULT 0"),
             ("status", "VARCHAR(50) DEFAULT 'upcoming'"),
+            ("description", "TEXT"),
         ]:
             if not _col_exists(cur, "placement_drives", col):
                 cur.execute(f"ALTER TABLE placement_drives ADD COLUMN {col} {defn};")

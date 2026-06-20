@@ -34,7 +34,6 @@ def setup_first_admin(payload: AdminSetupIn):
             "full_name": payload.full_name, "must_change_password": False}
 
 
-# ── Login ──────────────────────────────────────────────────────────────────────
 @router.post("/login", tags=["Authentication"])
 def login(payload: UserLogin):
     with get_db() as cur:

@@ -43,6 +43,8 @@
               <div class="batch-footer">
                 <div class="btn-group">
                   <button class="btn btn-sm btn-secondary view-students-btn" data-id="${b.id}" data-name="${b.name}">${IC.users} Students</button>
+                  ${isAdmin ? `<button class="btn btn-sm btn-secondary edit-batch-btn" data-id="${b.id}" data-name="${b.name}" data-branch="${b.branch||''}" data-trainer="${b.trainer_id||''}">${IC.edit} Edit</button>` : ''}
+                  ${isAdmin && !b.trainer_id ? `<button class="btn btn-sm btn-primary assign-trainer-btn" data-id="${b.id}" data-name="${b.name}">+ Assign Trainer</button>` : ''}
                   ${isAdmin ? `<button class="btn btn-sm btn-secondary add-students-btn" data-id="${b.id}" data-name="${b.name}">+ Add Students</button>` : ''}
                   ${isAdmin ? `<button class="btn btn-sm btn-danger del-batch-btn" data-id="${b.id}">${IC.trash}</button>` : ''}
                 </div>
@@ -89,6 +91,65 @@
       });
 
       if (isAdmin) {
+        document.querySelectorAll('.assign-trainer-btn').forEach(btn => {
+          btn.onclick = () => {
+            const bid = btn.dataset.id, bname = btn.dataset.name;
+            openModal(`<h2>Assign Trainer — ${bname}</h2>
+              <div class="form-group"><label>Select Trainer</label>
+                <select class="form-control" id="at-t">
+                  <option value="">No trainer</option>
+                  ${trainers.map(t => `<option value="${t.id}">${t.full_name||t.email}</option>`).join('')}
+                </select>
+              </div>
+              <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" id="at-save">Assign</button>
+              </div>`);
+            document.getElementById('at-save').onclick = async () => {
+              const tid = document.getElementById('at-t').value;
+              if (!tid) return toast('Select a trainer', 'error');
+              try {
+                await api(`/batches/${bid}`, { method: 'PUT', body: JSON.stringify({ trainer_id: parseInt(tid) }) });
+                toast('Trainer assigned!', 'success'); closeModal(); loadBatches();
+              } catch(e) { toast(e.message, 'error'); }
+            };
+          };
+        });
+
+        document.querySelectorAll('.edit-batch-btn').forEach(btn => {
+          btn.onclick = () => {
+            const bid = btn.dataset.id;
+            openModal(`<h2>Edit Batch</h2>
+              <div class="form-group"><label>Batch Name</label>
+                <input class="form-control" id="eb-n" value="${btn.dataset.name}">
+              </div>
+              <div class="form-group"><label>Branch</label>
+                <input class="form-control" id="eb-b" value="${btn.dataset.branch}">
+              </div>
+              <div class="form-group"><label>Trainer</label>
+                <select class="form-control" id="eb-t">
+                  <option value="">No trainer</option>
+                  ${trainers.map(t => `<option value="${t.id}" ${t.id==btn.dataset.trainer?'selected':''}>${t.full_name||t.email}</option>`).join('')}
+                </select>
+              </div>
+              <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" id="eb-save">Save Changes</button>
+              </div>`);
+            document.getElementById('eb-save').onclick = async () => {
+              const name = document.getElementById('eb-n').value.trim();
+              const branch = document.getElementById('eb-b').value.trim() || null;
+              const tid = document.getElementById('eb-t').value;
+              const trainer_id = tid ? parseInt(tid) : null;
+              if (!name) return toast('Name required', 'error');
+              try {
+                await api(`/batches/${bid}`, { method: 'PUT', body: JSON.stringify({ name, branch, trainer_id }) });
+                toast('Batch updated!', 'success'); closeModal(); loadBatches();
+              } catch(e) { toast(e.message, 'error'); }
+            };
+          };
+        });
+
         document.querySelectorAll('.add-students-btn').forEach(btn => {
           btn.onclick = async () => {
             const bid = btn.dataset.id, name = btn.dataset.name;

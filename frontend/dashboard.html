@@ -58,20 +58,27 @@
           </div>`;
       } else {
         // Student dashboard
-        const [profile, notifs, classes, drives] = await Promise.all([
+        const [profile, notifs, classes, drives, myApps] = await Promise.all([
           api('/students/profile').catch(() => null),
           api('/notifications/my').catch(() => []),
           api('/classes').catch(() => []),
-          api('/drives').catch(() => [])
+          api('/drives').catch(() => []),
+          api('/drives/my/applied-ids').catch(() => ({}))
         ]);
         const unread = notifs.filter(n => !n.is_read).length;
+        const appliedCount = Object.keys(myApps).length;
+        const selectedCount = Object.values(myApps).filter(s => s === 'selected').length;
+        const shortlistedCount = Object.values(myApps).filter(s => s === 'shortlisted').length;
+
         pb().innerHTML = `
           ${!profile ? `<div class="card mb-3" style="border-color:#fbbf24;background:#fffbeb"><p style="color:#b45309">⚠️ Complete your profile to get started. <a href="profile.html" style="color:var(--blue)">Go to Profile →</a></p></div>` : ''}
           <div class="stats-grid">
             <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6">${IC.doc}</div><div class="stat-value">${profile?.gpa || '—'}</div><div class="stat-label">Your GPA</div></div>
             <div class="stat-card"><div class="stat-icon" style="background:${profile?.status==='placed'?'#f0fdf4':'#fef3c7'};color:${profile?.status==='placed'?'#10b981':'#f59e0b'}">${IC.user}</div><div class="stat-value text-sm">${profile?.status || 'unplaced'}</div><div class="stat-label">Status</div></div>
             <div class="stat-card"><div class="stat-icon" style="background:#eff6ff;color:#3b82f6">${IC.bell}</div><div class="stat-value">${unread}</div><div class="stat-label">Unread Notifications</div></div>
-            <div class="stat-card"><div class="stat-icon" style="background:#ede9fe;color:#8b5cf6">${IC.class_}</div><div class="stat-value">${classes.length}</div><div class="stat-label">Upcoming Classes</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:#ede9fe;color:#8b5cf6">${IC.brief}</div><div class="stat-value">${appliedCount}</div><div class="stat-label">Applied Drives</div></div>
+            ${shortlistedCount > 0 ? `<div class="stat-card"><div class="stat-icon" style="background:#fef3c7;color:#f59e0b">${IC.brief}</div><div class="stat-value">${shortlistedCount}</div><div class="stat-label">Shortlisted</div></div>` : ''}
+            ${selectedCount > 0 ? `<div class="stat-card"><div class="stat-icon" style="background:#f0fdf4;color:#10b981">${IC.brief}</div><div class="stat-value">${selectedCount}</div><div class="stat-label">Selected 🏆</div></div>` : ''}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px" class="responsive-grid">
             <div class="card">
@@ -89,13 +96,13 @@
               </div>
             </div>
             <div class="card">
-              <div class="card-header"><h3>Upcoming Classes</h3><a href="classes.html" class="btn btn-sm btn-secondary">View All</a></div>
-              ${classes.slice(0,4).map(c => `
-                <div style="padding:10px 0;border-bottom:1px solid var(--border)">
-                  <div style="font-weight:600;font-size:0.88rem">${c.title}</div>
-                  <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">${c.batch_name} · ${fmtDate(c.class_date)} ${c.start_time||''}</div>
-                  ${c.location ? `<div style="font-size:0.75rem;color:var(--text-muted)">${c.location}</div>` : ''}
-                </div>`).join('') || '<p class="text-muted text-sm">No classes scheduled</p>'}
+              <div class="card-header"><h3>My Applications</h3><a href="drives.html" class="btn btn-sm btn-secondary">Browse Drives</a></div>
+              ${appliedCount === 0
+                ? '<p class="text-muted text-sm">No applications yet. Browse placement drives to apply.</p>'
+                : `<div class="table-wrapper"><table>
+                    <thead><tr><th>Drive ID</th><th>Status</th></tr></thead>
+                    <tbody>${Object.entries(myApps).slice(0,5).map(([did, st]) => `<tr><td>Drive #${did}</td><td>${statusBadge(st)}</td></tr>`).join('')}</tbody>
+                  </table></div>`}
             </div>
           </div>`;
       }

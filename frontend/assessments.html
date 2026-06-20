@@ -43,6 +43,8 @@
           <td><div class="btn-group">
             <button class="btn btn-sm btn-secondary sc-btn" data-id="${a.id}" data-title="${a.title}" data-max="${a.max_score}">Enter Score</button>
             <button class="btn btn-sm btn-secondary vs-btn" data-id="${a.id}" data-title="${a.title}">View Scores</button>
+            <button class="btn btn-sm btn-secondary edit-a-btn" data-id="${a.id}" data-title="${a.title}" data-desc="${a.description||''}" data-max="${a.max_score}" data-date="${a.date}" data-batch="${a.batch_id||''}">${IC.edit}</button>
+            <button class="btn btn-sm btn-danger del-a-btn" data-id="${a.id}">${IC.trash}</button>
           </div></td></tr>`).join('')}
           </tbody></table></div>`;
 
@@ -84,6 +86,48 @@
         });
 
         if (isTrainer) {
+          // Edit assessment
+          document.querySelectorAll('.edit-a-btn').forEach(btn => {
+            btn.onclick = () => {
+              openModal(`<h2>Edit Assessment</h2>
+                <div class="form-group"><label>Title</label><input class="form-control" id="ea-t" value="${btn.dataset.title}"></div>
+                <div class="form-group"><label>Description</label><input class="form-control" id="ea-d" value="${btn.dataset.desc}"></div>
+                <div class="form-group"><label>Batch</label><select class="form-control" id="ea-b"><option value="">All batches</option>${batches.map(b=>`<option value="${b.id}" ${b.id==btn.dataset.batch?'selected':''}>${b.name}</option>`).join('')}</select></div>
+                <div class="form-row">
+                  <div class="form-group"><label>Max Score</label><input type="number" class="form-control" id="ea-m" value="${btn.dataset.max}"></div>
+                  <div class="form-group"><label>Date</label><input type="date" class="form-control" id="ea-dt" value="${btn.dataset.date}"></div>
+                </div>
+                <div class="modal-actions">
+                  <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                  <button class="btn btn-primary" id="ea-save">Save Changes</button>
+                </div>`);
+              document.getElementById('ea-save').onclick = async () => {
+                const body = {
+                  title: document.getElementById('ea-t').value.trim(),
+                  description: document.getElementById('ea-d').value.trim() || null,
+                  max_score: parseInt(document.getElementById('ea-m').value),
+                  date: document.getElementById('ea-dt').value,
+                  batch_id: document.getElementById('ea-b').value ? parseInt(document.getElementById('ea-b').value) : null
+                };
+                try {
+                  await api(`/assessments/${btn.dataset.id}`, { method: 'PUT', body: JSON.stringify(body) });
+                  toast('Assessment updated!', 'success'); closeModal(); location.reload();
+                } catch(e) { toast(e.message, 'error'); }
+              };
+            };
+          });
+
+          // Delete assessment
+          document.querySelectorAll('.del-a-btn').forEach(btn => {
+            btn.onclick = async () => {
+              if (!confirm('Delete this assessment? All scores will be lost.')) return;
+              try {
+                await api(`/assessments/${btn.dataset.id}`, { method: 'DELETE' });
+                toast('Deleted', 'success'); location.reload();
+              } catch(e) { toast(e.message, 'error'); }
+            };
+          });
+
           document.getElementById('ca-btn').onclick = () => {
             openModal(`<h2>Create Assessment</h2>
               <div class="form-group"><label>Title</label><input class="form-control" id="cat" placeholder="e.g. Python Quiz 1"></div>

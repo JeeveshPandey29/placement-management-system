@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 from database import get_db
 from auth import require_trainer, require_student, get_current_user
-from schemas import AssessmentCreate, AssessmentOut, ScoreCreate, ScoreOut
+from schemas import AssessmentCreate, AssessmentUpdate, AssessmentOut, ScoreCreate, ScoreOut
 
 router = APIRouter()
 
@@ -102,6 +102,28 @@ def get_scores(assessment_id: int, current_user: dict = Depends(get_current_user
     return [{"id": r[0], "assessment_id": r[1], "student_id": r[2],
              "student_email": r[3], "student_name": r[4], "score": r[5], "feedback": r[6]}
             for r in rows]
+
+
+@router.put("/{assessment_id}", response_model=AssessmentOut)
+def update_assessment(assessment_id: int, payload: AssessmentUpdate, trainer: dict = Depends(require_trainer)):
+    fields, vals = [], []
+    for k, v in payload.model_dump(exclude_none=True).items():
+        fields.append(f"{k} = %s"); vals.append(v)
+    if not fields:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    vals.append(assessment_id)
+    with get_db() as cur:
+        cur.execute(f"UPDATE assessments SET {', '.join(fields)} WHERE id = %s", vals)
+        cur.execute("""
+            SELECT a.id, a.title, a.description, a.max_score, a.date, a.batch_id, b.name
+            FROM assessments a LEFT JOIN batches b ON a.batch_id = b.id
+            WHERE a.id = %s
+        """, (assessment_id,))
+        r = cur.fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    return {"id": r[0], "title": r[1], "description": r[2], "max_score": r[3],
+            "date": r[4], "batch_id": r[5], "batch_name": r[6]}
 
 
 @router.delete("/{assessment_id}")
