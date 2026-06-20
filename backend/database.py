@@ -11,6 +11,7 @@ if not DATABASE_URL:
 
 pool = SimpleConnectionPool(minconn=1, maxconn=10, dsn=DATABASE_URL)
 
+
 @contextmanager
 def get_db():
     conn = pool.getconn()
@@ -25,10 +26,43 @@ def get_db():
     finally:
         pool.putconn(conn)
 
+
+def _col_exists(cur, table, column):
+    cur.execute("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = %s AND column_name = %s
+    """, (table, column))
+    return cur.fetchone() is not None
+
+
+def _table_exists(cur, table):
+    cur.execute("""
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = %s
+    """, (table,))
+    return cur.fetchone() is not None
+
+
 def init_db():
     with get_db() as cur:
 
-        # 1. Colleges
+        # ── 1. Drop old incompatible tables from setup.sql ────────────────────
+        # Only drop if they have the OLD schema (first_name column = old users table)
+        cur.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='users' AND column_name='first_name'
+        """)
+        if cur.fetchone():
+            print("Dropping old schema tables...")
+            cur.execute("DROP TABLE IF EXISTS activity_logs CASCADE;")
+            cur.execute("DROP TABLE IF EXISTS interviews CASCADE;")
+            cur.execute("DROP TABLE IF EXISTS applications CASCADE;")
+            cur.execute("DROP TABLE IF EXISTS assessment_results CASCADE;")
+            cur.execute("DROP TABLE IF EXISTS trainers CASCADE;")
+            cur.execute("DROP TABLE IF EXISTS students CASCADE;")
+            cur.execute("DROP TABLE IF EXISTS users CASCADE;")
+
+        # ── 2. Colleges ───────────────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS colleges (
                 id SERIAL PRIMARY KEY,
@@ -37,7 +71,7 @@ def init_db():
             );
         ''')
 
-        # 2. PMS Users
+        # ── 3. PMS Users ──────────────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS pms_users (
                 id SERIAL PRIMARY KEY,
@@ -50,12 +84,15 @@ def init_db():
                 created_at TIMESTAMPTZ DEFAULT NOW()
             );
         ''')
-        # safe ALTER for existing tables
-        cur.execute("ALTER TABLE pms_users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255);")
-        cur.execute("ALTER TABLE pms_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;")
-        cur.execute("ALTER TABLE pms_users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
+        for col, defn in [
+            ("full_name", "VARCHAR(255)"),
+            ("must_change_password", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("created_at", "TIMESTAMPTZ DEFAULT NOW()"),
+        ]:
+            if not _col_exists(cur, "pms_users", col):
+                cur.execute(f"ALTER TABLE pms_users ADD COLUMN {col} {defn};")
 
-        # 3. Student Profiles (extended)
+        # ── 4. Student Profiles ───────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS student_profiles (
                 user_id INTEGER PRIMARY KEY REFERENCES pms_users(id) ON DELETE CASCADE,
@@ -76,26 +113,30 @@ def init_db():
                 github_url TEXT,
                 portfolio_url TEXT,
                 resume_url TEXT,
-                status VARCHAR(50) DEFAULT 'unplaced' CHECK (status IN ('unplaced', 'placed'))
+                status VARCHAR(50) DEFAULT 'unplaced'
+                    CHECK (status IN ('unplaced', 'placed'))
             );
         ''')
-        # safe ALTERs for existing deployments
         for col, defn in [
             ("enrollment_number", "VARCHAR(100)"),
+            ("roll_number", "VARCHAR(100)"),
             ("phone", "VARCHAR(20)"),
             ("dob", "DATE"),
             ("address", "TEXT"),
             ("resume_summary", "TEXT"),
+            ("skills", "TEXT"),
             ("education", "JSONB DEFAULT '[]'::jsonb"),
             ("projects", "JSONB DEFAULT '[]'::jsonb"),
             ("certifications", "JSONB DEFAULT '[]'::jsonb"),
             ("linkedin_url", "TEXT"),
             ("github_url", "TEXT"),
             ("portfolio_url", "TEXT"),
+            ("resume_url", "TEXT"),
         ]:
-            cur.execute(f"ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS {col} {defn};")
+            if not _col_exists(cur, "student_profiles", col):
+                cur.execute(f"ALTER TABLE student_profiles ADD COLUMN {col} {defn};")
 
-        # 4. Batches
+        # ── 5. Batches ────────────────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS batches (
                 id SERIAL PRIMARY KEY,
@@ -106,7 +147,7 @@ def init_db():
             );
         ''')
 
-        # 5. Batch Students (many-to-many)
+        # ── 6. Batch Students ─────────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS batch_students (
                 batch_id INTEGER REFERENCES batches(id) ON DELETE CASCADE,
@@ -115,7 +156,7 @@ def init_db():
             );
         ''')
 
-        # 6. Classes (sessions)
+        # ── 7. Classes ────────────────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS classes (
                 id SERIAL PRIMARY KEY,
@@ -130,7 +171,7 @@ def init_db():
             );
         ''')
 
-        # 7. Notifications
+        # ── 8. Notifications ──────────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS notifications (
                 id SERIAL PRIMARY KEY,
@@ -144,7 +185,7 @@ def init_db():
             );
         ''')
 
-        # 8. Notification Reads
+        # ── 9. Notification Reads ─────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS notification_reads (
                 notification_id INTEGER REFERENCES notifications(id) ON DELETE CASCADE,
@@ -154,7 +195,7 @@ def init_db():
             );
         ''')
 
-        # 9. Password Reset Tokens
+        # ── 10. Password Reset Tokens ─────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
                 id SERIAL PRIMARY KEY,
@@ -165,35 +206,49 @@ def init_db():
             );
         ''')
 
-        # 10. Attendance
+        # ── 11. Attendance ────────────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS attendance (
                 id SERIAL PRIMARY KEY,
                 student_id INTEGER REFERENCES pms_users(id) ON DELETE CASCADE,
-                batch_id INTEGER REFERENCES batches(id) ON DELETE SET NULL,
-                class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
                 date DATE NOT NULL,
                 status VARCHAR(50) NOT NULL CHECK (status IN ('present', 'absent', 'late')),
                 session_name VARCHAR(255) NOT NULL
             );
         ''')
-        cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS batch_id INTEGER REFERENCES batches(id) ON DELETE SET NULL;")
-        cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL;")
+        for col, defn in [
+            ("batch_id", "INTEGER REFERENCES batches(id) ON DELETE SET NULL"),
+            ("class_id", "INTEGER REFERENCES classes(id) ON DELETE SET NULL"),
+        ]:
+            if not _col_exists(cur, "attendance", col):
+                cur.execute(f"ALTER TABLE attendance ADD COLUMN {col} {defn};")
 
-        # 11. Assessments
+        # ── 12. Assessments ───────────────────────────────────────────────────
+        # Handle old schema: total_marks → max_score, assessment_date → date
         cur.execute('''
             CREATE TABLE IF NOT EXISTS assessments (
                 id SERIAL PRIMARY KEY,
                 title VARCHAR(255) NOT NULL,
                 description TEXT,
-                max_score INTEGER NOT NULL,
-                date DATE NOT NULL,
-                batch_id INTEGER REFERENCES batches(id) ON DELETE SET NULL
+                max_score INTEGER NOT NULL DEFAULT 100,
+                date DATE NOT NULL DEFAULT CURRENT_DATE
             );
         ''')
-        cur.execute("ALTER TABLE assessments ADD COLUMN IF NOT EXISTS batch_id INTEGER REFERENCES batches(id) ON DELETE SET NULL;")
+        # migrate old column names if needed
+        if _col_exists(cur, "assessments", "total_marks") and not _col_exists(cur, "assessments", "max_score"):
+            cur.execute("ALTER TABLE assessments RENAME COLUMN total_marks TO max_score;")
+        elif not _col_exists(cur, "assessments", "max_score"):
+            cur.execute("ALTER TABLE assessments ADD COLUMN max_score INTEGER NOT NULL DEFAULT 100;")
 
-        # 12. Assessment Scores
+        if _col_exists(cur, "assessments", "assessment_date") and not _col_exists(cur, "assessments", "date"):
+            cur.execute("ALTER TABLE assessments RENAME COLUMN assessment_date TO date;")
+        elif not _col_exists(cur, "assessments", "date"):
+            cur.execute("ALTER TABLE assessments ADD COLUMN date DATE NOT NULL DEFAULT CURRENT_DATE;")
+
+        if not _col_exists(cur, "assessments", "batch_id"):
+            cur.execute("ALTER TABLE assessments ADD COLUMN batch_id INTEGER REFERENCES batches(id) ON DELETE SET NULL;")
+
+        # ── 13. Assessment Scores ─────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS assessment_scores (
                 id SERIAL PRIMARY KEY,
@@ -205,21 +260,35 @@ def init_db():
             );
         ''')
 
-        # 13. Placement Drives
+        # ── 14. Placement Drives ──────────────────────────────────────────────
+        # Handle old schema: drive_date → date, missing package_lpa / eligibility_cgpa
         cur.execute('''
             CREATE TABLE IF NOT EXISTS placement_drives (
                 id SERIAL PRIMARY KEY,
                 company_name VARCHAR(255) NOT NULL,
                 job_role VARCHAR(255) NOT NULL,
-                package_lpa NUMERIC(5,2) NOT NULL,
-                eligibility_cgpa NUMERIC(4,2) NOT NULL,
-                date DATE NOT NULL,
+                package_lpa NUMERIC(5,2) NOT NULL DEFAULT 0,
+                eligibility_cgpa NUMERIC(4,2) NOT NULL DEFAULT 0,
+                date DATE NOT NULL DEFAULT CURRENT_DATE,
                 status VARCHAR(50) DEFAULT 'upcoming'
                     CHECK (status IN ('upcoming', 'active', 'completed'))
             );
         ''')
+        # migrate drive_date → date
+        if _col_exists(cur, "placement_drives", "drive_date") and not _col_exists(cur, "placement_drives", "date"):
+            cur.execute("ALTER TABLE placement_drives RENAME COLUMN drive_date TO date;")
+        elif not _col_exists(cur, "placement_drives", "date"):
+            cur.execute("ALTER TABLE placement_drives ADD COLUMN date DATE NOT NULL DEFAULT CURRENT_DATE;")
 
-        # 14. Drive Applications
+        for col, defn in [
+            ("package_lpa", "NUMERIC(5,2) NOT NULL DEFAULT 0"),
+            ("eligibility_cgpa", "NUMERIC(4,2) NOT NULL DEFAULT 0"),
+            ("status", "VARCHAR(50) DEFAULT 'upcoming'"),
+        ]:
+            if not _col_exists(cur, "placement_drives", col):
+                cur.execute(f"ALTER TABLE placement_drives ADD COLUMN {col} {defn};")
+
+        # ── 15. Drive Applications ────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS drive_applications (
                 id SERIAL PRIMARY KEY,
@@ -231,7 +300,7 @@ def init_db():
             );
         ''')
 
-        # 15. Interview Feedback
+        # ── 16. Interview Feedback ────────────────────────────────────────────
         cur.execute('''
             CREATE TABLE IF NOT EXISTS interview_feedback (
                 id SERIAL PRIMARY KEY,
@@ -243,10 +312,11 @@ def init_db():
             );
         ''')
 
-        # Seed
+        # ── Seed: MITADT UNIVERSITY ───────────────────────────────────────────
         cur.execute('''
             INSERT INTO colleges (id, name, location)
             VALUES (1, 'MITADT UNIVERSITY', 'Pune')
             ON CONFLICT (id) DO NOTHING;
         ''')
-        print("Database schema successfully checked / initialized.")
+
+        print("✅ Database schema successfully checked / initialized.")
