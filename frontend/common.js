@@ -159,7 +159,7 @@ function buildSidebar(active) {
         <div class="urole">${r}</div>
       </div>
     </div>
-    <a class="nav-item mt-1" href="#" id="logout-btn" style="color:#f87171">${IC.out} Logout</a>
+    <a class="nav-item mt-1" href="#" id="logout-btn" style="color:var(--red)">${IC.out} Logout</a>
   </div>
 </aside>`;
 }
